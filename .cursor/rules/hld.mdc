@@ -1,0 +1,284 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+1. Core Features Overview
+👨‍🎓 Target User
+College students preparing for placements
+
+
+🧰 Modules to include:
+Subjects for revision: DBMS, OOPs, System Design, Aptitude, and Business Aptitude Questions.
+
+
+Each subject includes notes, flashcards, and practice questions.
+
+
+Every subject page includes a quick link to its respective quiz section.
+
+
+Quiz section allows users to choose and attempt quizzes for any of the listed subjects.
+
+
+Mock Tests include Timed Tests, Subject-wise Mocks, Full SDE Mocks, and Custom Subject Selection.
+
+
+AI-based feedback is provided after every mock test to help users improve.
+
+
+Resume Analyzer tool helps users refine and optimize their resumes.
+
+
+AI-based Mock Interviews simulate real interviews and provide performance insights.
+
+
+Daily New Topic section introduces one new topic every day to ensure consistent learning.
+
+
+1-on-1 Quiz Battles (online duels) will be included in the next version.
+
+
+User Dashboard displays progress tracking and subject-wise performance.
+
+
+Leaderboard system motivates users through rankings and achievements.
+
+
+Streak system rewards users for maintaining daily study habits.
+
+
+User Profile section allows personal tracking and customization.
+
+
+Discussion Forum for doubt resolution and peer interaction will be available in the next version.
+
+🧱 2. System Architecture – High-Level
+💡 Tech Stack Suggestion:
+Layer
+Stack
+Frontend
+React.js / Next.js (for SSR + performance), TailwindCSS for styling
+Backend
+Node.js with Express.js (REST API), OR NestJS (if you want structured)
+Database
+PostgreSQL (relational DB, for quizzes, user data), MongoDB (for flexible resume/interview data)
+AI/ML Services
+Python + Flask or FastAPI for AI microservices (resume, interviews)
+Auth
+Firebase Auth / Auth0 / JWT-based system
+Real-time (1v1 quiz)
+Socket.IO / WebSockets
+Deployment
+Vercel (Frontend), AWS EC2 or Railway/Render (Backend), MongoDB Atlas / Supabase (DB)
+Storage
+AWS S3 or Firebase Storage (for resumes, images, videos)
+
+
+🗂 3. Database Design (Simplified)
+🔑 Tables/Collections
+Users: user_id, name, email, password_hash, current_level, score, resume_url, streaks, preferences
+
+
+Topics: topic_id, name, category (DSA/DBMS/etc)
+
+
+Notes: note_id, topic_id, content, created_at
+
+
+Quizzes: quiz_id, topic_id, question, options[], correct_option
+
+
+Quiz Attempts: attempt_id, user_id, quiz_id, chosen_option, is_correct, time_taken
+
+
+Resume Reviews: review_id, user_id, feedback_json, uploaded_resume_url
+
+
+Mock Interviews: interview_id, user_id, feedback_json, date
+
+
+Tests: test_id, type, topic_ids[], duration, questions[]
+
+
+1v1 Sessions: session_id, user1_id, user2_id, status, winner_id
+
+
+Leaderboard: derived using scores, streaks from attempts
+
+
+
+🔁 4. Feature-Wise Design
+📚 A. Notes + Quizzes Module
+Show topic-wise cards with View Notes & Start Quiz
+
+
+Fetch notes from DB (Markdown format)
+
+
+Quizzes can be time-bound
+
+
+Track accuracy, attempts, streaks for each user
+
+
+📄 B. Resume Analyzer (AI Feature)
+Upload PDF → Sent to AI microservice
+
+
+Extract text via pdfminer or PyMuPDF
+
+
+Analyze for key sections (Education, Skills, Projects, ATS keywords)
+
+
+Return feedback (JSON) → Render as UI suggestions
+
+
+Option to download reviewed PDF or suggestion sheet
+
+
+🤖 C. AI Mock Interview
+UI simulates Q/A — user types or speaks
+
+
+Use OpenAI or custom model to ask HR/Tech Qs
+
+
+Record responses → Analyze confidence, content, structure
+
+
+Provide feedback on each answer + overall rating
+
+
+🧪 D. Mock Tests
+Timed multi-section test (DSA + Apti + DBMS etc.)
+
+
+Track score, speed, rank
+
+
+Backend logic to randomize question sets
+
+
+Save attempts in DB
+
+
+⚔ E. 1-on-1 Quiz (Real-Time)
+Matchmaking logic (quick join / invite friend)
+
+
+Real-time question sync using Socket.IO
+
+
+Timer per question + winner decided by accuracy + speed
+
+
+Post-match result screen
+
+
+
+📊 5. User Dashboard
+Show:
+
+
+Overall accuracy, time spent
+
+
+Module-wise progress (like 60% done with DBMS)
+
+
+Resume review status
+
+
+Mock interview scores
+
+
+Quiz battles won/lost
+
+
+Leaderboard rank
+
+
+
+🔐 6. Authentication & Authorization
+Use Firebase Auth with Google OAuth2 support
+Role examples:
+
+
+student, admin, mentor
+
+
+Protect certain routes like admin panel, resume access
+
+
+
+🛡 7. Security
+Hash passwords (bcrypt)
+
+
+Secure file uploads (MIME type checking)
+
+
+Rate-limiting for AI services
+
+
+Use HTTPS (SSL certificate)
+
+
+
+📦 8. Deployment Strategy
+Frontend: Vercel (CI/CD, instant deploy)
+
+
+Backend: EC2 or Railway
+
+
+Databases: Supabase (Postgres) or MongoDB Atlas
+
+
+AI Resume/Interview Services: Hosted on separate EC2 instance
+
+
+WebSockets: Host with proper scaling (or use Pusher)
+
+
+
+🚀 9. Future Add-ons
+Job Board (curated internships, jobs)
+
+
+Referral tracker
+
+
+Resume builder tool
+
+
+Gamification: badges, XP, leveling system
+
+
+Community Forum (QnA, resources)
+
+
+
+🔄 10. CI/CD & DevOps
+GitHub Actions / Vercel CI for frontend
+
+
+Dockerize backend and AI services
+
+
+Use docker-compose for local dev (backend + DB + AI)
+
+
+Set up logs with Winston / Sentry for error tracking
+
+
+
+
+Prompt used->
+ok so bro listen carefully and seriously
+I am designing a placemnt prep website mainly for students preparing for placmeents.
+now as most of the students just focus on dsa and ignore other important things like dbms,system design, aptitude,oops,etc. I am designing website with all these concpets covered with notes,quizzes,resume analyzer,ai mock interview,mock tests,etc(additional feature one v one quizz)
+
+so give me detailed high level design for it
