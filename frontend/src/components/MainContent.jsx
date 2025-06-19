@@ -3,6 +3,12 @@ import { useApp } from '../contexts/AppContext';
 import Dashboard from './modules/Dashboard';
 import Subjects from './modules/Subjects';
 import DailyTopic from './modules/DailyTopic';
+import Quizzes from './modules/Quizzes';
+import MockTests from './modules/MockTests';
+import ResumeAnalyzer from './modules/ResumeAnalyzer';
+import MockInterviews from './modules/MockInterviews';
+import Leaderboard from './modules/Leaderboard';
+import UserProfile from './modules/UserProfile';
 
 const MainContent = () => {
     const { state } = useApp();
@@ -16,40 +22,15 @@ const MainContent = () => {
             case 'daily-topic':
                 return <DailyTopic />;
             case 'quizzes':
-                return (
-                    <div className="text-center py-12">
-                        <h2 className="text-2xl font-bold text-gray-800 mb-4">Quizzes Module</h2>
-                        <p className="text-gray-600">Coming soon - Interactive quizzes with different strategies</p>
-                    </div>
-                );
+                return <Quizzes />;
             case 'mock-tests':
-                return (
-                    <div className="text-center py-12">
-                        <h2 className="text-2xl font-bold text-gray-800 mb-4">Mock Tests Module</h2>
-                        <p className="text-gray-600">Coming soon - Comprehensive mock examinations</p>
-                    </div>
-                );
+                return <MockTests />;
             case 'resume-analyzer':
-                return (
-                    <div className="text-center py-12">
-                        <h2 className="text-2xl font-bold text-gray-800 mb-4">Resume Analyzer</h2>
-                        <p className="text-gray-600">Coming soon - AI-powered resume analysis</p>
-                    </div>
-                );
+                return <ResumeAnalyzer />;
             case 'mock-interviews':
-                return (
-                    <div className="text-center py-12">
-                        <h2 className="text-2xl font-bold text-gray-800 mb-4">Mock Interviews</h2>
-                        <p className="text-gray-600">Coming soon - AI-based interview practice</p>
-                    </div>
-                );
+                return <MockInterviews />;
             case 'leaderboard':
-                return (
-                    <div className="text-center py-12">
-                        <h2 className="text-2xl font-bold text-gray-800 mb-4">Leaderboard</h2>
-                        <p className="text-gray-600">Coming soon - Compete with other learners</p>
-                    </div>
-                );
+                return <Leaderboard />;
             case 'analytics':
                 return (
                     <div className="text-center py-12">
@@ -58,12 +39,7 @@ const MainContent = () => {
                     </div>
                 );
             case 'profile':
-                return (
-                    <div className="text-center py-12">
-                        <h2 className="text-2xl font-bold text-gray-800 mb-4">Profile</h2>
-                        <p className="text-gray-600">Coming soon - Manage your profile and preferences</p>
-                    </div>
-                );
+                return <UserProfile />;
             default:
                 return <Dashboard />;
         }

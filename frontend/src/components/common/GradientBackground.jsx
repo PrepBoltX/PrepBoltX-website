@@ -6,9 +6,9 @@ const GradientBackground = ({
     className = ''
 }) => {
     const gradients = {
-        primary: 'bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50',
-        secondary: 'bg-gradient-to-br from-green-50 via-teal-50 to-cyan-50',
-        accent: 'bg-gradient-to-br from-orange-50 via-red-50 to-pink-50'
+        primary: 'bg-gradient-to-br from-gray-100 via-gray-200 to-gray-100',
+        secondary: 'bg-gradient-to-br from-gray-100 via-gray-200 to-gray-100',
+        accent: 'bg-gradient-to-br from-gray-100 via-gray-200 to-gray-100'
     };
 
     return (
