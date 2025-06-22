@@ -1,6 +1,12 @@
 const { GoogleGenerativeAI } = require('@google/generative-ai');
+const path = require('path');
+const fs = require('fs');
+const dotenv = require('dotenv');
 
-// Initialize Google Generative AI
+// Load environment variables if not already loaded
+dotenv.config({ path: path.resolve(__dirname, '../../.env') });
+
+// Use API key from environment variable
 const googleAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY);
 
 // Function to choose AI provider based on availability
@@ -39,7 +45,7 @@ exports.generateQuiz = async ({ subject, category, difficulty, numberOfQuestions
         let result;
 
         // We'll always use Google API
-        const model = googleAI.getGenerativeModel({ model: "gemini-pro" });
+        const model = googleAI.getGenerativeModel({ model: "gemini-2.0-flash" });
         const response = await model.generateContent(prompt);
         const responseText = response.response.text();
 
@@ -75,7 +81,7 @@ exports.generateInterviewQuestions = async ({ jobRole, experienceLevel, numberOf
     }`;
 
         // We'll always use Google API
-        const model = googleAI.getGenerativeModel({ model: "gemini-pro" });
+        const model = googleAI.getGenerativeModel({ model: "gemini-2.0-flash" });
         const response = await model.generateContent(prompt);
         const responseText = response.response.text();
 
@@ -102,11 +108,11 @@ exports.generateTopicContent = async ({ subject, topic }) => {
     The response should be in JSON format with the following structure:
     {
       "title": "Topic title",
-      "content": "Comprehensive educational content about the topic in HTML format with headings, paragraphs, lists, etc."
+      "content": "Comprehensive educational content about the topic in HTML format with headings, paragraphs, lists, etc., and also explain in depth about the topic"
     }`;
 
         // We'll always use Google API
-        const model = googleAI.getGenerativeModel({ model: "gemini-pro" });
+        const model = googleAI.getGenerativeModel({ model: "gemini-2.0-flash" });
         const response = await model.generateContent(prompt);
         const responseText = response.response.text();
 
@@ -146,7 +152,7 @@ exports.analyzeResume = async ({ resumeText, jobDescription }) => {
     }`;
 
         // We'll always use Google API
-        const model = googleAI.getGenerativeModel({ model: "gemini-pro" });
+        const model = googleAI.getGenerativeModel({ model: "gemini-2.0-flash" });
         const response = await model.generateContent(prompt);
         const responseText = response.response.text();
 
