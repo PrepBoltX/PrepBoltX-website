@@ -19,24 +19,18 @@ dotenv.config({ path: path.resolve(__dirname, '../.env') });
 
 // Initialize Express app
 const app = express();
-const PORT = 3000; // Changed to 3000 to avoid conflicts
+const PORT = process.env.PORT || 3000;
 
 // Middleware
 app.use(cors());
 app.use(express.json());
 
-// Hardcoded connection string to avoid env issues
-const MONGODB_URI = 'mongodb+srv://kashishug22:KokkwjeMkMtj4qW0@cluster0.midoehx.mongodb.net/prepboltx?retryWrites=true&w=majority';
-// Set global environment variables manually
-process.env.GOOGLE_API_KEY = 'AIzaSyDgyj-qSj-kENW-iym2dL5_owWvaoQx8-g';
-process.env.JWT_SECRET = '756d9ac217eb5cf51be491f8de78937ed37564e5fcc16f44';
-
-console.log('MongoDB URI:', MONGODB_URI);
-console.log('Google API Key available:', !!process.env.GOOGLE_API_KEY);
+console.log('MongoDB URI available:', !!process.env.MONGODB_URI);
 console.log('JWT Secret available:', !!process.env.JWT_SECRET);
+console.log('Google API Key available:', !!process.env.GOOGLE_API_KEY);
 
 // Connect to MongoDB
-mongoose.connect(MONGODB_URI)
+mongoose.connect(process.env.MONGODB_URI)
     .then(() => console.log('Connected to MongoDB'))
     .catch(err => console.error('MongoDB connection error:', err));
 
