@@ -1,134 +1,249 @@
-require('dotenv').config();
+const dotenv = require('dotenv');
 const mongoose = require('mongoose');
-const bcrypt = require('bcrypt');
-const User = require('../models/User');
 const Subject = require('../models/Subject');
+const Quiz = require('../models/Quiz');
+const aiService = require('../services/aiService');
+const path = require('path');
 
-// Connect to MongoDB
+// Load environment variables
+dotenv.config({ path: path.resolve(__dirname, '../../.env') });
+
+// Connect to MongoDB using environment variable
 mongoose.connect(process.env.MONGODB_URI)
-    .then(() => console.log('Connected to MongoDB'))
+    .then(() => console.log('Connected to MongoDB for seeding'))
     .catch(err => {
         console.error('MongoDB connection error:', err);
         process.exit(1);
     });
 
-// Seed users
-const seedUsers = async () => {
-    try {
-        // Clear existing users
-        await User.deleteMany({});
+// Subject data definitions - topics for each subject
+const subjectTopics = {
+    'DBMS': [
+        'Introduction to DBMS',
+        'SQL Basics',
+        'Normalization',
+        'Transactions and ACID Properties',
+        'Indexing and Query Optimization'
+    ],
+    'OOPs': [
+        'Introduction to OOP',
+        'Classes and Objects',
+        'Inheritance',
+        'Polymorphism',
+        'Abstraction and Encapsulation'
+    ],
+    'System Design': [
+        'Introduction to System Design',
+        'Scalability',
+        'Load Balancing',
+        'Caching',
+        'Database Sharding'
+    ],
+    'Aptitude': [
+        'Quantitative Aptitude',
+        'Logical Reasoning',
+        'Verbal Ability',
+        'Data Interpretation',
+        'Problem Solving'
+    ]
+    
+};
 
-        // Create admin user
-        const adminUser = new User({
-            name: 'Admin User',
-            email: 'admin@prepboltx.com',
-            password: 'admin123', // Will be hashed by pre-save hook
-            role: 'admin'
-        });
-
-        await adminUser.save();
-        console.log('Admin user created');
-
-        // Create regular user
-        const regularUser = new User({
-            name: 'Demo User',
-            email: 'user@prepboltx.com',
-            password: 'user123', // Will be hashed by pre-save hook
-            role: 'user'
-        });
-
-        await regularUser.save();
-        console.log('Regular user created');
-
-        return { adminUser, regularUser };
-    } catch (error) {
-        console.error('Error seeding users:', error);
-        process.exit(1);
+// Subject descriptions and categories
+const subjectDetails = {
+    'DBMS': {
+        description: 'Database Management Systems - Learn about relational databases, SQL, normalization, transactions, and more.',
+        category: 'Technical',
+        icon: 'database-icon.png'
+    },
+    'OOPs': {
+        description: 'Object-Oriented Programming - Learn about classes, inheritance, polymorphism, encapsulation, and abstraction.',
+        category: 'Technical',
+        icon: 'code-icon.png'
+    },
+    'System Design': {
+        description: 'Learn how to design scalable systems, architecture patterns, distributed systems, and more.',
+        category: 'Technical',
+        icon: 'architecture-icon.png'
+    },
+    'Aptitude': {
+        description: 'Quantitative aptitude, logical reasoning, and problem-solving skills for placement exams.',
+        category: 'Non-Technical',
+        icon: 'math-icon.png'
     }
 };
 
-// Seed subjects
-const seedSubjects = async (adminId) => {
+// Function to add delay between API calls to avoid rate limiting
+const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
+
+// Create subjects if they don't exist
+const createSubjectsIfNeeded = async () => {
     try {
-        // Clear existing subjects
-        await Subject.deleteMany({});
+        console.log('Checking and creating subjects if needed...');
+        const subjects = Object.keys(subjectTopics);
 
-        // Create subjects
-        const subjects = [
-            {
-                name: 'Computer Science',
-                description: 'Fundamental concepts of computer science including data structures, algorithms, and programming languages.',
-                category: 'Technical',
-                topics: [
-                    {
-                        title: 'Data Structures',
-                        content: '<h2>Introduction to Data Structures</h2><p>Data structures are specialized formats for organizing and storing data. They provide a means to manage large amounts of data efficiently for uses such as large databases and internet indexing services.</p><h3>Common Data Structures</h3><ul><li>Arrays</li><li>Linked Lists</li><li>Stacks</li><li>Queues</li><li>Trees</li><li>Graphs</li><li>Hash Tables</li></ul>',
-                        order: 1
-                    },
-                    {
-                        title: 'Algorithms',
-                        content: '<h2>Introduction to Algorithms</h2><p>An algorithm is a step-by-step procedure for calculations. They are used for data processing, automated reasoning, and other tasks.</p><h3>Common Algorithms</h3><ul><li>Sorting Algorithms</li><li>Search Algorithms</li><li>Graph Algorithms</li><li>Dynamic Programming</li></ul>',
-                        order: 2
-                    }
-                ]
-            },
-            {
-                name: 'Mathematics',
-                description: 'Essential mathematical concepts including algebra, calculus, statistics, and discrete mathematics.',
-                category: 'Academic',
-                topics: [
-                    {
-                        title: 'Algebra',
-                        content: '<h2>Introduction to Algebra</h2><p>Algebra is the study of mathematical symbols and the rules for manipulating these symbols. It is a unifying thread of almost all of mathematics.</p><h3>Key Topics</h3><ul><li>Equations and Inequalities</li><li>Functions</li><li>Polynomials</li><li>Matrices</li></ul>',
-                        order: 1
-                    },
-                    {
-                        title: 'Calculus',
-                        content: '<h2>Introduction to Calculus</h2><p>Calculus is the mathematical study of continuous change. It has two major branches: differential calculus and integral calculus.</p><h3>Key Topics</h3><ul><li>Limits</li><li>Derivatives</li><li>Integrals</li><li>Series</li></ul>',
-                        order: 2
-                    }
-                ]
-            },
-            {
-                name: 'Interview Preparation',
-                description: 'Comprehensive guide to ace technical and behavioral interviews at top companies.',
-                category: 'Career',
-                topics: [
-                    {
-                        title: 'Technical Interview Tips',
-                        content: '<h2>Technical Interview Preparation</h2><p>Technical interviews assess your problem-solving skills, coding ability, and technical knowledge.</p><h3>Key Tips</h3><ul><li>Practice coding problems regularly</li><li>Study data structures and algorithms</li><li>Review systems design concepts</li><li>Do mock interviews</li></ul>',
-                        order: 1
-                    },
-                    {
-                        title: 'Behavioral Interview Strategies',
-                        content: '<h2>Behavioral Interview Preparation</h2><p>Behavioral interviews assess your soft skills, teamwork, and past experiences.</p><h3>Key Strategies</h3><ul><li>Use the STAR method (Situation, Task, Action, Result)</li><li>Prepare stories about your achievements</li><li>Research the company culture</li><li>Practice common behavioral questions</li></ul>',
-                        order: 2
-                    }
-                ]
+        for (const subjectName of subjects) {
+            // Check if subject already exists
+            let subject = await Subject.findOne({ name: subjectName });
+            
+            if (!subject) {
+                console.log(`Creating subject: ${subjectName}`);
+                const details = subjectDetails[subjectName];
+                
+                subject = new Subject({
+                    name: subjectName,
+                    description: details.description,
+                    category: details.category,
+                    icon: details.icon
+                });
+                
+                await subject.save();
+                console.log(`Created subject: ${subjectName}`);
+            } else {
+                console.log(`Subject ${subjectName} already exists`);
             }
-        ];
+        }
+        
+        console.log('Subject creation complete!');
+    } catch (error) {
+        console.error('Error creating subjects:', error);
+    }
+};
 
-        for (const subjectData of subjects) {
-            const subject = new Subject(subjectData);
-            await subject.save();
-            console.log(`Subject created: ${subject.name}`);
+// Generate topics for a subject
+const generateTopicsForSubject = async (subject) => {
+    try {
+        const subjectDoc = await Subject.findOne({ name: subject });
+        if (!subjectDoc) {
+            console.log(`Subject ${subject} not found`);
+            return;
         }
 
-        console.log('Subjects created successfully');
+        const topics = subjectTopics[subject];
+        console.log(`Generating topics for ${subject}...`);
+
+        for (const topicTitle of topics) {
+            // Check if topic already exists
+            const existingTopic = subjectDoc.topics.find(t => t.title === topicTitle);
+            if (existingTopic) {
+                console.log(`Topic ${topicTitle} already exists for ${subject}`);
+                continue;
+            }
+
+            console.log(`Generating content for topic: ${topicTitle}`);
+            const topicContent = await aiService.generateTopicContent({
+                subject,
+                topic: topicTitle
+            });
+
+            if (!topicContent) {
+                console.log(`Failed to generate content for topic: ${topicTitle}`);
+                continue;
+            }
+
+            // Add topic to subject
+            subjectDoc.topics.push({
+                title: topicTitle,
+                content: topicContent.content,
+                order: subjectDoc.topics.length + 1,
+                isGeneratedByAI: true
+            });
+
+            await subjectDoc.save();
+            console.log(`Added topic ${topicTitle} to ${subject}`);
+            await delay(2000); // 2 second delay between API calls
+        }
+
+        console.log(`Finished generating topics for ${subject}`);
     } catch (error) {
-        console.error('Error seeding subjects:', error);
-        process.exit(1);
+        console.error(`Error generating topics for ${subject}:`, error);
     }
 };
 
-// Main function to run all seed operations
-const seedAll = async () => {
+// Generate quizzes for a subject
+const generateQuizzesForSubject = async (subject) => {
     try {
-        const { adminUser } = await seedUsers();
-        await seedSubjects(adminUser._id);
+        const subjectDoc = await Subject.findOne({ name: subject });
+        if (!subjectDoc) {
+            console.log(`Subject ${subject} not found`);
+            return;
+        }
 
-        console.log('Seed data inserted successfully');
-        mongoose.connection.close();
+        // Create one quiz per difficulty level
+        const difficulties = ['easy', 'medium', 'hard'];
+        
+        console.log(`Generating quizzes for ${subject}...`);
+
+        for (const difficulty of difficulties) {
+            // Check if quiz already exists
+            const existingQuiz = await Quiz.findOne({ subject: subjectDoc._id, difficulty });
+            if (existingQuiz) {
+                console.log(`${difficulty} quiz already exists for ${subject}`);
+                continue;
+            }
+
+            console.log(`Generating ${difficulty} quiz for ${subject}`);
+            const generatedQuiz = await aiService.generateQuiz({
+                subject: subject,
+                category: subjectDoc.category,
+                difficulty,
+                numberOfQuestions: 5
+            });
+
+            if (!generatedQuiz) {
+                console.log(`Failed to generate ${difficulty} quiz for ${subject}`);
+                continue;
+            }
+
+            const quiz = new Quiz({
+                title: generatedQuiz.title || `${subject} ${difficulty} Quiz`,
+                description: generatedQuiz.description || `Test your knowledge of ${subject} concepts with this ${difficulty} quiz`,
+                subject: subjectDoc._id,
+                category: subjectDoc.category,
+                difficulty,
+                questions: generatedQuiz.questions,
+                isGeneratedByAI: true
+            });
+
+            await quiz.save();
+
+            // Add quiz reference to subject
+            subjectDoc.quizzes.push(quiz._id);
+            await subjectDoc.save();
+
+            console.log(`Created ${difficulty} quiz for ${subject}`);
+            await delay(2000); // 2 second delay between API calls
+        }
+
+        console.log(`Finished generating quizzes for ${subject}`);
+    } catch (error) {
+        console.error(`Error generating quizzes for ${subject}:`, error);
+    }
+};
+
+// Main function to seed all data
+const seedData = async () => {
+    try {
+        // First create subjects if they don't exist
+        await createSubjectsIfNeeded();
+        
+        // Get all subjects
+        const subjects = Object.keys(subjectTopics);
+
+        // Generate topics for each subject
+        for (const subject of subjects) {
+            await generateTopicsForSubject(subject);
+            await delay(3000); // 3 second delay between subjects
+        }
+
+        // Then generate quizzes for each subject
+        for (const subject of subjects) {
+            await generateQuizzesForSubject(subject);
+            await delay(3000); // 3 second delay between subjects
+        }
+
+        console.log('Data seeding complete!');
+        process.exit(0);
     } catch (error) {
         console.error('Error seeding data:', error);
         process.exit(1);
@@ -136,4 +251,4 @@ const seedAll = async () => {
 };
 
 // Run the seed function
-seedAll(); 
+seedData(); 
