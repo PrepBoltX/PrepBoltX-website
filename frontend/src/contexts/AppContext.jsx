@@ -41,8 +41,8 @@ const initialState = {
             completedTopics: 13
         },
         {
-            id: 'business-aptitude',
-            name: 'Business Aptitude',
+            id: 'operating-system',
+            name: 'Operating System',
             icon: 'TrendingUp',
             color: 'bg-red-500',
             progress: 55,

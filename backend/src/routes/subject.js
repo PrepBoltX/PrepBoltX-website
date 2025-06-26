@@ -7,6 +7,9 @@ const router = express.Router();
 // Get all subjects
 router.get('/', subjectController.getAllSubjects);
 
+// Get subjects by category
+router.get('/category/:category', subjectController.getSubjectsByCategory);
+
 // Get subject by ID
 router.get('/:id', subjectController.getSubjectById);
 
@@ -23,7 +26,7 @@ router.post('/:id/generate-topic',
     subjectController.generateTopicContent
 );
 
-// Get topic by ID
-router.get('/:subjectId/topics/:topicId', subjectController.getTopicById);
+// Get topic by ID - updated to reflect new structure
+router.get('/topics/:topicId', subjectController.getTopicById);
 
 module.exports = router;

@@ -3,6 +3,7 @@ const mongoose = require('mongoose');
 const Subject = require('../models/Subject');
 const Quiz = require('../models/Quiz');
 const aiService = require('../services/aiService');
+const externalQuizService = require('../services/externalQuizService');
 const path = require('path');
 
 // Load environment variables
@@ -45,8 +46,14 @@ const subjectTopics = {
         'Verbal Ability',
         'Data Interpretation',
         'Problem Solving'
+    ],
+    'Operating System': [
+        'Process Management',
+        'Memory Management',
+        'File Systems',
+        'CPU Scheduling',
+        'Deadlocks'
     ]
-    
 };
 
 // Subject descriptions and categories
@@ -54,22 +61,32 @@ const subjectDetails = {
     'DBMS': {
         description: 'Database Management Systems - Learn about relational databases, SQL, normalization, transactions, and more.',
         category: 'Technical',
+        type: 'DBMS',
         icon: 'database-icon.png'
     },
     'OOPs': {
         description: 'Object-Oriented Programming - Learn about classes, inheritance, polymorphism, encapsulation, and abstraction.',
         category: 'Technical',
+        type: 'OOPs',
         icon: 'code-icon.png'
     },
     'System Design': {
         description: 'Learn how to design scalable systems, architecture patterns, distributed systems, and more.',
         category: 'Technical',
+        type: 'System Design',
         icon: 'architecture-icon.png'
     },
     'Aptitude': {
         description: 'Quantitative aptitude, logical reasoning, and problem-solving skills for placement exams.',
         category: 'Non-Technical',
+        type: 'Aptitude',
         icon: 'math-icon.png'
+    },
+    'Operating System': {
+        description: 'Learn about OS concepts like process management, memory management, file systems and concurrency.',
+        category: 'Technical',
+        type: 'Operating System',
+        icon: 'os-icon.png'
     }
 };
 
@@ -94,13 +111,20 @@ const createSubjectsIfNeeded = async () => {
                     name: subjectName,
                     description: details.description,
                     category: details.category,
+                    type: details.type,
                     icon: details.icon
                 });
                 
                 await subject.save();
                 console.log(`Created subject: ${subjectName}`);
             } else {
-                console.log(`Subject ${subjectName} already exists`);
+                // Update existing subject with new schema if needed
+                if (!subject.type || subject.type !== subjectDetails[subjectName].type) {
+                    subject.type = subjectDetails[subjectName].type;
+                    subject.category = subjectDetails[subjectName].category;
+                    await subject.save();
+                    console.log(`Updated subject ${subjectName} with new type and category`);
+                }
             }
         }
         
@@ -160,7 +184,7 @@ const generateTopicsForSubject = async (subject) => {
     }
 };
 
-// Generate quizzes for a subject
+// Generate quizzes for a subject using AI
 const generateQuizzesForSubject = async (subject) => {
     try {
         const subjectDoc = await Subject.findOne({ name: subject });
@@ -176,16 +200,16 @@ const generateQuizzesForSubject = async (subject) => {
 
         for (const difficulty of difficulties) {
             // Check if quiz already exists
-            const existingQuiz = await Quiz.findOne({ subject: subjectDoc._id, difficulty });
+            const existingQuiz = await Quiz.findOne({ subject: subjectDoc._id, difficulty, isGeneratedByAI: true });
             if (existingQuiz) {
-                console.log(`${difficulty} quiz already exists for ${subject}`);
+                console.log(`${difficulty} AI-generated quiz already exists for ${subject}`);
                 continue;
             }
 
             console.log(`Generating ${difficulty} quiz for ${subject}`);
             const generatedQuiz = await aiService.generateQuiz({
                 subject: subject,
-                category: subjectDoc.category,
+                category: subjectDoc.type, // Use type here as the quiz category
                 difficulty,
                 numberOfQuestions: 5
             });
@@ -199,7 +223,7 @@ const generateQuizzesForSubject = async (subject) => {
                 title: generatedQuiz.title || `${subject} ${difficulty} Quiz`,
                 description: generatedQuiz.description || `Test your knowledge of ${subject} concepts with this ${difficulty} quiz`,
                 subject: subjectDoc._id,
-                category: subjectDoc.category,
+                category: subjectDoc.type, // Use type here as the quiz category
                 difficulty,
                 questions: generatedQuiz.questions,
                 isGeneratedByAI: true
@@ -221,6 +245,68 @@ const generateQuizzesForSubject = async (subject) => {
     }
 };
 
+// Generate quizzes for a subject using external API
+const generateExternalQuizzesForSubject = async (subject) => {
+    try {
+        const subjectDoc = await Subject.findOne({ name: subject });
+        if (!subjectDoc) {
+            console.log(`Subject ${subject} not found`);
+            return;
+        }
+
+        // Create one quiz per difficulty level
+        const difficulties = ['easy', 'medium', 'hard'];
+        
+        console.log(`Generating external API quizzes for ${subject}...`);
+
+        for (const difficulty of difficulties) {
+            // Check if quiz already exists
+            const existingQuiz = await Quiz.findOne({ subject: subjectDoc._id, difficulty, isExternalGenerated: true });
+            if (existingQuiz) {
+                console.log(`${difficulty} external API quiz already exists for ${subject}`);
+                continue;
+            }
+
+            console.log(`Generating ${difficulty} external API quiz for ${subject}`);
+            
+            // Get questions from external API service
+            const questions = await externalQuizService.getQuestionsForSubject(
+                subject, 
+                5, // 5 questions per quiz
+                difficulty
+            );
+
+            if (!questions || questions.length === 0) {
+                console.log(`Failed to fetch external API questions for ${subject}`);
+                continue;
+            }
+
+            const quiz = new Quiz({
+                title: `${subject} ${difficulty} Quiz (External)`,
+                description: `Test your knowledge of ${subject} concepts with this ${difficulty} quiz from external sources`,
+                subject: subjectDoc._id,
+                category: subjectDoc.type, // Use type here as the quiz category
+                difficulty,
+                questions,
+                isExternalGenerated: true
+            });
+
+            await quiz.save();
+
+            // Add quiz reference to subject
+            subjectDoc.quizzes.push(quiz._id);
+            await subjectDoc.save();
+
+            console.log(`Created ${difficulty} external API quiz for ${subject}`);
+            await delay(2000); // 2 second delay between API calls
+        }
+
+        console.log(`Finished generating external API quizzes for ${subject}`);
+    } catch (error) {
+        console.error(`Error generating external API quizzes for ${subject}:`, error);
+    }
+};
+
 // Main function to seed all data
 const seedData = async () => {
     try {
@@ -236,9 +322,15 @@ const seedData = async () => {
             await delay(3000); // 3 second delay between subjects
         }
 
-        // Then generate quizzes for each subject
+        // Then generate quizzes for each subject using AI
         for (const subject of subjects) {
             await generateQuizzesForSubject(subject);
+            await delay(3000); // 3 second delay between subjects
+        }
+
+        // Generate quizzes using external APIs
+        for (const subject of subjects) {
+            await generateExternalQuizzesForSubject(subject);
             await delay(3000); // 3 second delay between subjects
         }
 
@@ -250,5 +342,5 @@ const seedData = async () => {
     }
 };
 
-// Run the seed function
+// Run the seeding function
 seedData(); 

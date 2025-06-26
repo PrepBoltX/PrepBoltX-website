@@ -1,10 +1,11 @@
 const Subject = require('../models/Subject');
+const Topic = require('../models/Topic');
 const aiService = require('../services/aiService');
 
 // Get all subjects
 exports.getAllSubjects = async (req, res) => {
     try {
-        const subjects = await Subject.find().select('name description category icon');
+        const subjects = await Subject.find().select('name description category type icon color totalTopics');
         res.status(200).json({ subjects });
     } catch (error) {
         console.error('Get all subjects error:', error);
@@ -12,11 +13,26 @@ exports.getAllSubjects = async (req, res) => {
     }
 };
 
+// Get subjects by category
+exports.getSubjectsByCategory = async (req, res) => {
+    try {
+        const { category } = req.params;
+        const subjects = await Subject.find({ category }).select('name description type icon color totalTopics');
+        res.status(200).json({ subjects });
+    } catch (error) {
+        console.error('Get subjects by category error:', error);
+        res.status(500).json({ message: 'Server error while fetching subjects by category' });
+    }
+};
+
 // Get subject by ID
 exports.getSubjectById = async (req, res) => {
     try {
         const subject = await Subject.findById(req.params.id)
-            .populate('quizzes', 'title description difficulty');
+            .populate('topics', 'title content order')
+            .populate('quizzes', 'title description difficulty')
+            .populate('mockTests', 'title description')
+            .populate('interviews', 'title description');
 
         if (!subject) {
             return res.status(404).json({ message: 'Subject not found' });
@@ -32,7 +48,7 @@ exports.getSubjectById = async (req, res) => {
 // Create a new subject
 exports.createSubject = async (req, res) => {
     try {
-        const { name, description, category, icon } = req.body;
+        const { name, description, category, type, icon, color } = req.body;
 
         // Check if subject with same name already exists
         const existingSubject = await Subject.findOne({ name });
@@ -44,7 +60,10 @@ exports.createSubject = async (req, res) => {
             name,
             description,
             category,
-            icon
+            type,
+            icon,
+            color: color || 'bg-blue-500',
+            totalTopics: 0
         });
 
         await subject.save();
@@ -65,7 +84,7 @@ exports.createSubject = async (req, res) => {
 // Add topic to subject
 exports.addTopic = async (req, res) => {
     try {
-        const { title, content, order } = req.body;
+        const { title, content, order, contentType, resources, estimatedReadTime } = req.body;
         const subjectId = req.params.id;
 
         const subject = await Subject.findById(subjectId);
@@ -73,19 +92,32 @@ exports.addTopic = async (req, res) => {
             return res.status(404).json({ message: 'Subject not found' });
         }
 
-        subject.topics.push({
+        // Create the new topic as a separate document
+        const topic = new Topic({
             title,
             content,
-            order: order || subject.topics.length + 1
+            order: order || (subject.totalTopics + 1),
+            subject: subjectId,
+            contentType: contentType || 'markdown',
+            resources: resources || [],
+            estimatedReadTime: estimatedReadTime || 5
         });
 
+        // Save the topic
+        const savedTopic = await topic.save();
+
+        // Update the subject with reference to the new topic
+        subject.topics.push(savedTopic._id);
+        subject.totalTopics += 1;
+        
         await subject.save();
 
         res.status(201).json({
             message: 'Topic added successfully',
             topic: {
-                title,
-                order: order || subject.topics.length
+                id: savedTopic._id,
+                title: savedTopic.title,
+                order: savedTopic.order
             }
         });
     } catch (error) {
@@ -115,20 +147,31 @@ exports.generateTopicContent = async (req, res) => {
             return res.status(500).json({ message: 'Failed to generate topic content' });
         }
 
-        subject.topics.push({
+        // Create new topic with generated content
+        const newTopic = new Topic({
             title: generatedContent.title,
             content: generatedContent.content,
-            order: subject.topics.length + 1,
-            isGeneratedByAI: true
+            order: subject.totalTopics + 1,
+            subject: subjectId,
+            isGeneratedByAI: true,
+            contentType: 'markdown'
         });
 
+        // Save the topic
+        const savedTopic = await newTopic.save();
+
+        // Update the subject with reference to the new topic
+        subject.topics.push(savedTopic._id);
+        subject.totalTopics += 1;
+        
         await subject.save();
 
         res.status(201).json({
             message: 'Topic content generated successfully',
             topic: {
+                id: savedTopic._id,
                 title: generatedContent.title,
-                order: subject.topics.length
+                order: savedTopic.order
             }
         });
     } catch (error) {
@@ -140,14 +183,9 @@ exports.generateTopicContent = async (req, res) => {
 // Get topic by ID
 exports.getTopicById = async (req, res) => {
     try {
-        const { subjectId, topicId } = req.params;
+        const { topicId } = req.params;
 
-        const subject = await Subject.findById(subjectId);
-        if (!subject) {
-            return res.status(404).json({ message: 'Subject not found' });
-        }
-
-        const topic = subject.topics.id(topicId);
+        const topic = await Topic.findById(topicId);
         if (!topic) {
             return res.status(404).json({ message: 'Topic not found' });
         }

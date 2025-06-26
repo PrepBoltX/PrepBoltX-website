@@ -124,27 +124,27 @@ const Quizzes = () => {
       ],
       timeLimit: 180
     },
-    'business-aptitude': {
-      title: 'Business Aptitude Quiz',
+    'operating-system': {
+      title: 'Operating System Quiz',
       questions: [
         {
-          id: 'ba1',
-          question: 'Which financial ratio measures a company\'s ability to pay short-term obligations?',
-          options: ['P/E Ratio', 'Current Ratio', 'Debt-to-Equity', 'ROI'],
+          id: 'os1',
+          question: 'Which scheduling algorithm selects the process with the smallest CPU burst time?',
+          options: ['First Come First Served', 'Shortest Job First', 'Round Robin', 'Priority Scheduling'],
           correctAnswer: 1,
-          explanation: 'Current Ratio compares current assets to current liabilities, indicating ability to pay short-term debts.'
+          explanation: 'Shortest Job First (SJF) selects the process with the smallest CPU burst time first to minimize average waiting time.'
         },
         {
-          id: 'ba2',
-          question: 'What is opportunity cost?',
+          id: 'os2',
+          question: 'What is thrashing in operating systems?',
           options: [
-            'The cost of starting a new business', 
-            'The value of the best alternative foregone', 
-            'The cost of marketing a product', 
-            'The cost of training employees'
+            'When a system crashes repeatedly', 
+            'When CPU utilization is very high', 
+            'When a process spends more time paging than executing', 
+            'When multiple processes compete for CPU time'
           ],
-          correctAnswer: 1,
-          explanation: 'Opportunity cost represents the benefits you miss out on when choosing one alternative over another.'
+          correctAnswer: 2,
+          explanation: 'Thrashing occurs when a computer\'s virtual memory resources are overused, leading to a constant state of paging, causing performance degradation.'
         }
       ],
       timeLimit: 180

@@ -19,7 +19,23 @@ const resumeSchema = new mongoose.Schema({
         enum: ['pdf', 'docx', 'txt'],
         required: true
     },
+    fileSize: {
+        type: Number,  // in bytes
+        required: true
+    },
+    fileUrl: {
+        type: String,  // URL to access the file
+        default: ''
+    },
     jobDescription: {
+        type: String,
+        default: ''
+    },
+    targetRole: {
+        type: String, 
+        default: ''
+    },
+    targetCompany: {
         type: String,
         default: ''
     },
@@ -44,14 +60,53 @@ const resumeSchema = new mongoose.Schema({
             type: Number,
             default: 0
         },
+        atsCompatibility: {
+            type: Number,
+            default: 0
+        },
+        keywordMatches: [{
+            keyword: String,
+            count: Number,
+            importance: Number  // 1-10 scale of importance
+        }],
+        sectionScores: {
+            education: {
+                type: Number,
+                default: 0
+            },
+            experience: {
+                type: Number,
+                default: 0
+            },
+            skills: {
+                type: Number,
+                default: 0
+            },
+            projects: {
+                type: Number,
+                default: 0
+            },
+            overall: {
+                type: Number,
+                default: 0
+            }
+        },
         detailedFeedback: {
             type: String,
             default: ''
         }
     },
+    improvedResumeUrl: {
+        type: String,
+        default: ''
+    },
     isAnalyzed: {
         type: Boolean,
         default: false
+    },
+    analysisDate: {
+        type: Date,
+        default: null
     }
 }, { timestamps: true });
 

@@ -16,6 +16,9 @@ router.post('/', quizController.createQuiz);
 // Generate quiz using AI (temporarily removed auth for testing)
 router.post('/generate', quizController.generateQuiz);
 
+// Generate quiz using external APIs (temporarily removed auth for testing)
+router.post('/generate-external', quizController.generateExternalQuiz);
+
 // Submit quiz attempt (temporarily removed auth for testing)
 router.post('/submit', quizController.submitQuizAttempt);
 

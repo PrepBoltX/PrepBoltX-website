@@ -155,34 +155,6 @@ const MockTests = () => {
         subject: 'aptitude',
         difficulty: 'medium'
       }
-    ],
-    'business-aptitude': [
-      {
-        id: 'ba_mock_1',
-        question: 'Which financial metric measures a company\'s efficiency at generating profit from its available assets?',
-        options: [
-          'Return on Assets (ROA)',
-          'Price-to-Earnings Ratio (P/E)',
-          'Debt-to-Equity Ratio',
-          'Current Ratio'
-        ],
-        correctAnswer: 0,
-        subject: 'business-aptitude',
-        difficulty: 'medium'
-      },
-      {
-        id: 'ba_mock_2',
-        question: 'What is the term for the rate of return that makes the net present value (NPV) of an investment zero?',
-        options: [
-          'Rate of Return',
-          'Internal Rate of Return (IRR)',
-          'Payback Period',
-          'Return on Investment (ROI)'
-        ],
-        correctAnswer: 1,
-        subject: 'business-aptitude',
-        difficulty: 'hard'
-      }
     ]
   };
 

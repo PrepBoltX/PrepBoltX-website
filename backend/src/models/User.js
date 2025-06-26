@@ -22,12 +22,67 @@ const userSchema = new mongoose.Schema({
     },
     role: {
         type: String,
-        enum: ['user', 'admin'],
+        enum: ['user', 'admin', 'mentor'],
         default: 'user'
     },
     score: {
         type: Number,
         default: 0
+    },
+    level: {
+        type: Number,
+        default: 1
+    },
+    streak: {
+        currentStreak: {
+            type: Number,
+            default: 0
+        },
+        longestStreak: {
+            type: Number,
+            default: 0
+        },
+        lastActiveDate: {
+            type: Date,
+            default: null
+        }
+    },
+    badges: [{
+        name: {
+            type: String,
+            required: true
+        },
+        description: {
+            type: String,
+            required: true
+        },
+        icon: {
+            type: String,
+            default: 'default_badge.png'
+        },
+        earnedAt: {
+            type: Date,
+            default: Date.now
+        }
+    }],
+    preferences: {
+        theme: {
+            type: String,
+            enum: ['light', 'dark', 'system'],
+            default: 'system'
+        },
+        emailNotifications: {
+            type: Boolean,
+            default: true
+        },
+        studyReminders: {
+            type: Boolean,
+            default: true
+        },
+        showProgressOnProfile: {
+            type: Boolean,
+            default: true
+        }
     },
     quizAttempts: [{
         quizId: {
@@ -35,6 +90,9 @@ const userSchema = new mongoose.Schema({
             ref: 'Quiz'
         },
         score: Number,
+        totalQuestions: Number,
+        correctAnswers: Number,
+        timeTaken: Number,
         completed: Boolean,
         date: {
             type: Date,
@@ -47,6 +105,14 @@ const userSchema = new mongoose.Schema({
             ref: 'MockTest'
         },
         score: Number,
+        totalQuestions: Number,
+        correctAnswers: Number,
+        timeTaken: Number,
+        sectionWiseScores: [{
+            section: String,
+            score: Number,
+            totalQuestions: Number
+        }],
         completed: Boolean,
         date: {
             type: Date,
@@ -59,6 +125,13 @@ const userSchema = new mongoose.Schema({
             ref: 'Interview'
         },
         feedback: String,
+        rating: {
+            type: Number,
+            min: 1,
+            max: 5
+        },
+        strengths: [String],
+        areasToImprove: [String],
         completed: Boolean,
         date: {
             type: Date,
@@ -71,6 +144,7 @@ const userSchema = new mongoose.Schema({
             ref: 'Resume'
         },
         feedback: String,
+        score: Number,
         date: {
             type: Date,
             default: Date.now
@@ -84,6 +158,28 @@ const userSchema = new mongoose.Schema({
         progress: {
             type: Number,
             default: 0
+        },
+        topicsCompleted: [{
+            type: mongoose.Schema.Types.ObjectId,
+            ref: 'Topic'
+        }],
+        quizzesCompleted: [{
+            type: mongoose.Schema.Types.ObjectId,
+            ref: 'Quiz'
+        }],
+        lastActivity: {
+            type: Date,
+            default: null
+        }
+    }],
+    dailyTopicsCompleted: [{
+        topic: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: 'Topic'
+        },
+        completedDate: {
+            type: Date,
+            default: Date.now
         }
     }]
 }, { timestamps: true });

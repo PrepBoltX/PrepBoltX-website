@@ -8,10 +8,13 @@ const path = require('path');
 const authRoutes = require('./routes/auth');
 const quizRoutes = require('./routes/quiz');
 const subjectRoutes = require('./routes/subject');
+const topicRoutes = require('./routes/topic');
+const flashcardRoutes = require('./routes/flashcard');
 const interviewRoutes = require('./routes/interview');
 const mockTestRoutes = require('./routes/mockTest');
 const resumeRoutes = require('./routes/resume');
 const leaderboardRoutes = require('./routes/leaderboard');
+const dailyTopicRoutes = require('./routes/dailyTopic');
 const userRoutes = require('./routes/user');
 
 // Load environment variables
@@ -38,10 +41,13 @@ mongoose.connect(process.env.MONGODB_URI)
 app.use('/api/auth', authRoutes);
 app.use('/api/quiz', quizRoutes);
 app.use('/api/subject', subjectRoutes);
+app.use('/api/topic', topicRoutes);
+app.use('/api/flashcard', flashcardRoutes);
 app.use('/api/interview', interviewRoutes);
 app.use('/api/mock-test', mockTestRoutes);
 app.use('/api/resume', resumeRoutes);
 app.use('/api/leaderboard', leaderboardRoutes);
+app.use('/api/daily-topic', dailyTopicRoutes);
 app.use('/api/user', userRoutes);
 
 // Root route

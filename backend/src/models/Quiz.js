@@ -16,19 +16,27 @@ const questionSchema = new mongoose.Schema({
         }
     },
     correctAnswer: {
-        type: String,
+        type: Number,  // Index of the correct option
         required: true,
         validate: {
             validator: function (correctAnswer) {
-                return this.options.includes(correctAnswer);
+                return correctAnswer >= 0 && correctAnswer < this.options.length;
             },
-            message: 'Correct answer must be included in the options'
+            message: 'Correct answer index must be valid within options array'
         }
     },
     explanation: {
         type: String,
         default: ''
-    }
+    },
+    difficulty: {
+        type: String,
+        enum: ['easy', 'medium', 'hard'],
+        default: 'medium'
+    },
+    tags: [{
+        type: String
+    }]
 });
 
 const quizSchema = new mongoose.Schema({
@@ -45,9 +53,18 @@ const quizSchema = new mongoose.Schema({
         ref: 'Subject',
         required: true
     },
+    topic: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Topic'
+    },
     category: {
         type: String,
         required: true
+    },
+    type: {
+        type: String,
+        enum: ['timed', 'practice', 'adaptive'],
+        default: 'practice'
     },
     difficulty: {
         type: String,
@@ -68,9 +85,25 @@ const quizSchema = new mongoose.Schema({
             message: 'Quiz must have at least one question'
         }
     },
+    featuredOrder: {
+        type: Number,
+        default: 9999  // Lower numbers show first in featured lists
+    },
     isGeneratedByAI: {
         type: Boolean,
         default: false
+    },
+    isExternalGenerated: {
+        type: Boolean,
+        default: false
+    },
+    attemptCount: {
+        type: Number,
+        default: 0
+    },
+    avgScore: {
+        type: Number,
+        default: 0
     },
     createdBy: {
         type: mongoose.Schema.Types.ObjectId,

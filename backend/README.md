@@ -1,111 +1,112 @@
 # PrepBoltX Backend
 
-Backend server for the PrepBoltX platform - an educational platform for quizzes, mock tests, interviews, and resume analysis.
+Backend API for the PrepBoltX placement preparation platform.
 
 ## Features
 
 - User authentication and profile management
-- Quiz creation and assessment
-- Mock test generation and evaluation
-- AI-powered interview preparation
-- Resume analysis with AI feedback
-- Subject-based learning content
-- Leaderboard and scoring system
+- Subject and topic management
+- Quiz generation (AI-based and External API)
+- Resume analyzer
+- Mock interviews
+- Mock tests
+- Progress tracking
+- Leaderboard system
 
 ## Tech Stack
 
-- Node.js and Express
-- MongoDB with Mongoose
+- Node.js with Express.js
+- MongoDB for database
 - JWT for authentication
-- OpenAI and Google Generative AI integration
-- RESTful API architecture
+- AI services for quiz generation and content creation
 
-## Setup
+## External APIs Integration
+
+The backend integrates with the following external APIs for quiz content:
+
+1. **OpenTrivia API** - Used for general knowledge and aptitude questions
+   - Free to use, no API key required
+   - Used for Aptitude and Operating System questions
+
+2. **QuizAPI** - Used for programming and technical questions
+   - Requires API key from [QuizAPI.io](https://quizapi.io/)
+   - Used for DBMS, OOPs, and System Design questions
+
+3. **Mock APIs** - Fallback when external APIs are unavailable
+   - Custom-built mock APIs for all subject areas
+   - Used automatically when external APIs fail
+
+## Getting Started
 
 ### Prerequisites
 
-- Node.js (v14+ recommended)
-- MongoDB (local installation or MongoDB Atlas)
-- API keys for OpenAI and/or Google Generative AI
+- Node.js (v14+)
+- MongoDB (local or Atlas)
+- API keys for external services (optional)
 
 ### Installation
 
 1. Clone the repository
-2. Navigate to the backend directory:
-   ```
-   cd backend
-   ```
-3. Install dependencies:
-   ```
-   npm install
-   ```
-4. Create a `.env` file based on `.env.example` and add your configuration:
-   ```
-   PORT=5000
-   MONGODB_URI=mongodb://localhost:27017/prepboltx
-   JWT_SECRET=your_jwt_secret_key_here
-   OPENAI_API_KEY=your_openai_api_key_here
-   GOOGLE_API_KEY=your_google_api_key_here
-   ```
-5. Start the development server:
-   ```
-   npm run dev
-   ```
-6. (Optional) Seed the database with initial data:
-   ```
-   npm run seed
-   ```
+```
+git clone https://github.com/yourusername/PrepBoltX-website.git
+cd PrepBoltX-website/backend
+```
 
-## API Endpoints
+2. Install dependencies
+```
+npm install
+```
 
-### Authentication
+3. Create a .env file in the backend directory with the following variables:
+```
+MONGODB_URI=your_mongodb_connection_string
+JWT_SECRET=your_jwt_secret
+PORT=5000
+QUIZ_API_KEY=your_quizapi_key (optional)
+GEMINI_API_KEY=your_gemini_api_key (optional)
+OPENAI_API_KEY=your_openai_api_key (optional)
+```
+
+4. Start the development server
+```
+npm run dev
+```
+
+### API Endpoints
+
+#### Authentication
 - `POST /api/auth/register` - Register a new user
 - `POST /api/auth/login` - Login user
-- `GET /api/auth/profile` - Get current user profile
 
-### Subjects
-- `GET /api/subject` - Get all subjects
-- `GET /api/subject/:id` - Get subject by ID
-- `POST /api/subject` - Create a new subject (admin)
-- `POST /api/subject/:id/topics` - Add topic to subject (admin)
-- `POST /api/subject/:id/generate-topic` - Generate topic content using AI (admin)
+#### Subjects
+- `GET /api/subjects` - Get all subjects
+- `GET /api/subjects/:id` - Get a subject by ID
+- `POST /api/subjects` - Create a new subject
+- `PUT /api/subjects/:id` - Update a subject
+- `GET /api/subjects/:id/topics` - Get topics for a subject
 
-### Quizzes
-- `GET /api/quiz` - Get all quizzes
-- `GET /api/quiz/:id` - Get quiz by ID
-- `POST /api/quiz` - Create a new quiz
-- `POST /api/quiz/generate` - Generate quiz using AI
-- `POST /api/quiz/submit` - Submit quiz attempt
+#### Quizzes
+- `GET /api/quizzes` - Get all quizzes
+- `GET /api/quizzes/:id` - Get a quiz by ID
+- `POST /api/quizzes` - Create a new quiz
+- `POST /api/quizzes/generate` - Generate a quiz using AI
+- `POST /api/quizzes/generate-external` - Generate a quiz using external APIs
+- `POST /api/quizzes/submit` - Submit quiz attempt
 
-### Mock Tests
-- `GET /api/mock-test` - Get all mock tests
-- `GET /api/mock-test/:id` - Get mock test by ID
-- `POST /api/mock-test` - Create a new mock test
-- `POST /api/mock-test/generate` - Generate mock test using AI
-- `POST /api/mock-test/submit` - Submit mock test attempt
+## Data Generation
 
-### Interviews
-- `GET /api/interview` - Get all interviews
-- `GET /api/interview/:id` - Get interview by ID
-- `POST /api/interview` - Create a new interview
-- `POST /api/interview/generate` - Generate interview using AI
-- `POST /api/interview/submit` - Submit interview attempt
+The backend includes tools to automatically generate content:
 
-### Resume
-- `GET /api/resume` - Get all resumes for current user
-- `GET /api/resume/:id` - Get resume by ID
-- `POST /api/resume/upload` - Upload a new resume
-- `POST /api/resume/:id/analyze` - Analyze resume using AI
-- `DELETE /api/resume/:id` - Delete resume
+1. Seed the database with subjects, topics, and quizzes:
+```
+npm run seed
+```
 
-### User
-- `GET /api/user/profile` - Get user profile
-- `PUT /api/user/profile` - Update user profile
-- `PUT /api/user/change-password` - Change password
-- `GET /api/user/quiz-history` - Get user's quiz history
-- `GET /api/user/mock-test-history` - Get user's mock test history
+2. Test the external quiz API integration:
+```
+npm run test-external-api
+```
 
-### Leaderboard
-- `GET /api/leaderboard` - Get global leaderboard
-- `GET /api/leaderboard/quiz/:quizId` - Get quiz leaderboard
-- `GET /api/leaderboard/rank` - Get current user's rank 
+## License
+
+ISC 
