@@ -14,7 +14,7 @@ const MainContent = () => {
     const { state } = useApp();
 
     const renderContent = () => {
-        switch (state.activeModule) {
+        switch (state.currentModule) {
             case 'dashboard':
                 return <Dashboard />;
             case 'subjects':
