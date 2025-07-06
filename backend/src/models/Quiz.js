@@ -73,17 +73,17 @@ const quizSchema = new mongoose.Schema({
     },
     timeLimit: {
         type: Number,
-        default: 600  // 10 minutes in seconds
+        default: 1200  // 20 minutes in seconds
     },
     questions: {
         type: [questionSchema],
         required: true,
-        validate: {
-            validator: function (questions) {
-                return questions.length > 0;
-            },
-            message: 'Quiz must have at least one question'
-        }
+        // validate: {
+        //     validator: function (questions) {
+        //         return questions.length > 0;
+        //     },
+        //     message: 'Quiz must have at least one question'
+        // }
     },
     featuredOrder: {
         type: Number,
