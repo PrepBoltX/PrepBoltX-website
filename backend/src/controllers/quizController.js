@@ -251,12 +251,17 @@ exports.generateExternalQuiz = async (req, res) => {
     }
 };
 
+// Standard time limit for all quizzes (20 minutes in seconds)
+const STANDARD_TIME_LIMIT = 1200;
+
 // Submit quiz attempt
 exports.submitQuizAttempt = async (req, res) => {
     try {
-        const { quizId, answers, timeTaken } = req.body;
-        const userId = req.user ? req.user.userId : req.body.userId; // Support both auth and non-auth for testing
-
+        const { quizId, answers, timeTaken, questionCount } = req.body;
+        const userId = req.user.userId;
+        
+        console.log('Submitting quiz attempt:', { quizId, userId, timeTaken, questionCount });
+        
         // Get quiz
         const quiz = await Quiz.findById(quizId);
         if (!quiz) {
@@ -267,78 +272,103 @@ exports.submitQuizAttempt = async (req, res) => {
         let score = 0;
         let correctAnswers = 0;
         const results = [];
-
-        // For each question, check if the user's answer matches the correct answer
-        quiz.questions.forEach((question, index) => {
-            const userAnswer = answers[question._id] !== undefined ? answers[question._id] : answers[index];
-            const isCorrect = userAnswer === question.correctAnswer;
+        
+        // Process answers - we're using the answers object directly since it contains
+        // the mapping between question IDs and user answers
+        Object.keys(answers).forEach(questionId => {
+            // Find the question in the quiz
+            const questionIndex = quiz.questions.findIndex(q => 
+                q._id.toString() === questionId || q._id === questionId
+            );
             
-            if (isCorrect) {
-                score++;
-                correctAnswers++;
-            }
+            if (questionIndex !== -1) {
+                const question = quiz.questions[questionIndex];
+                const userAnswer = answers[questionId];
+                const isCorrect = userAnswer === question.correctAnswer;
+                
+                if (isCorrect) {
+                    score++;
+                    correctAnswers++;
+                }
 
-            results.push({
-                questionId: question._id,
-                userAnswer,
-                correctAnswer: question.correctAnswer,
-                isCorrect
-            });
+                results.push({
+                    questionId: question._id,
+                    userAnswer,
+                    correctAnswer: question.correctAnswer,
+                    isCorrect
+                });
+            }
         });
 
-        // Calculate percentage score
-        const percentageScore = (score / quiz.questions.length) * 100;
+        // Use the actual number of questions attempted from the request
+        // This is the number of randomly selected questions
+        const actualQuestionCount = questionCount || Object.keys(answers).length;
+        
+        // Calculate percentage score based on actual questions
+        const percentageScore = (score / actualQuestionCount) * 100;
 
         // Update quiz attempt count and average score
         quiz.attemptCount += 1;
         quiz.avgScore = ((quiz.avgScore * (quiz.attemptCount - 1)) + percentageScore) / quiz.attemptCount;
         await quiz.save();
 
-        // If user is authenticated, update their quiz attempts
-        if (userId) {
-            const user = await User.findById(userId);
-            if (user) {
-                user.quizAttempts.push({
-                    quizId,
-                    score: percentageScore,
-                    totalQuestions: quiz.questions.length,
-                    correctAnswers,
-                    timeTaken: timeTaken || 0,
-                    completed: true,
-                    date: new Date()
-                });
-
-                // Update the user's overall score
-                user.score += percentageScore;
-                
-                // Update subject progress if needed
-                const subjectIndex = user.subjects.findIndex(
-                    s => s.subjectId.toString() === quiz.subject.toString()
-                );
-                
-                if (subjectIndex !== -1) {
-                    const quizCompleted = user.subjects[subjectIndex].quizzesCompleted || [];
-                    if (!quizCompleted.includes(quizId)) {
-                        user.subjects[subjectIndex].quizzesCompleted.push(quizId);
-                    }
-                } else {
-                    user.subjects.push({
-                        subjectId: quiz.subject,
-                        progress: 0,
-                        quizzesCompleted: [quizId]
-                    });
-                }
-
-                await user.save();
-            }
+        // Update user's quiz attempts
+        const user = await User.findById(userId);
+        if (!user) {
+            return res.status(404).json({ message: 'User not found' });
         }
+        
+        console.log('Found user:', user.name);
+        
+        // Calculate actual time taken, using the standard time limit if not provided
+        const actualTimeTaken = timeTaken !== null && timeTaken !== undefined 
+            ? timeTaken 
+            : STANDARD_TIME_LIMIT;
+        
+        // Add quiz attempt to user with actual question count
+        user.quizAttempts.push({
+            quizId,
+            score: percentageScore,
+            totalQuestions: actualQuestionCount, // Use the actual number of questions attempted
+            correctAnswers,
+            timeTaken: actualTimeTaken,
+            completed: true,
+            date: new Date()
+        });
+
+        // Update the user's overall score
+        user.score += percentageScore;
+        
+        // Update subject progress if needed
+        const subjectIndex = user.subjects.findIndex(
+            s => s.subjectId.toString() === quiz.subject.toString()
+        );
+        
+        if (subjectIndex !== -1) {
+            if (!user.subjects[subjectIndex].quizzesCompleted) {
+                user.subjects[subjectIndex].quizzesCompleted = [];
+            }
+            
+            if (!user.subjects[subjectIndex].quizzesCompleted.includes(quizId)) {
+                user.subjects[subjectIndex].quizzesCompleted.push(quizId);
+            }
+        } else {
+            user.subjects.push({
+                subjectId: quiz.subject,
+                progress: 0,
+                quizzesCompleted: [quizId]
+            });
+        }
+
+        await user.save();
+        console.log('Updated user with quiz attempt');
 
         res.status(200).json({
             message: 'Quiz submitted successfully',
             results: {
                 score: percentageScore,
                 correctAnswers,
-                totalQuestions: quiz.questions.length,
+                totalQuestions: actualQuestionCount, // Use the actual number of questions attempted
                 details: results
             }
         });
