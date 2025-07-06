@@ -375,7 +375,7 @@ const UserProfile = () => {
                     name="name"
                     value={formData.name}
                     onChange={handleInputChange}
-                    className="w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
+                    className="w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-black"
                   />
                 </div>
                 
@@ -387,7 +387,7 @@ const UserProfile = () => {
                     name="email"
                     value={formData.email}
                     onChange={handleInputChange}
-                    className="w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
+                    className="w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-black"
                   />
                 </div>
                 
@@ -399,7 +399,7 @@ const UserProfile = () => {
                     name="college"
                     value={formData.college}
                     onChange={handleInputChange}
-                    className="w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
+                    className="w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-black"
                   />
                 </div>
                 
@@ -410,7 +410,7 @@ const UserProfile = () => {
                     name="graduationYear"
                     value={formData.graduationYear}
                     onChange={handleInputChange}
-                    className="w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
+                    className="w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-black"
                   >
                     {['2024', '2025', '2026', '2027', '2028'].map(year => (
                       <option key={year} value={year}>{year}</option>
@@ -426,7 +426,7 @@ const UserProfile = () => {
                     rows="3"
                     value={formData.bio}
                     onChange={handleInputChange}
-                    className="w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
+                    className="w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-black"
                   ></textarea>
                 </div>
                 
@@ -438,7 +438,7 @@ const UserProfile = () => {
                     rows="2"
                     value={formData.goal}
                     onChange={handleInputChange}
-                    className="w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
+                    className="w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-black"
                   ></textarea>
                 </div>
               </div>
