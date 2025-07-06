@@ -1,164 +1,147 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useApp } from '../../contexts/AppContext';
 import AnimatedCard from '../common/AnimatedCard';
 import ProgressBar from '../common/ProgressBar';
+import { getAllMockTests, getMockTestById, generateCustomMockTest, submitMockTestAttempt } from '../../services/ApiService';
 
 const MockTests = () => {
-  const { state } = useApp();
-  const [selectedTestType, setSelectedTestType] = useState(null);
+  const { state, dispatch } = useApp();
+  const [mockTests, setMockTests] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  
+  const [selectedMode, setSelectedMode] = useState(null); // 'timed', 'subject', 'full', 'custom'
+  const [selectedMockTest, setSelectedMockTest] = useState(null);
+  const [activeMockTest, setActiveMockTest] = useState(null);
+  const [testQuestions, setTestQuestions] = useState([]);
   const [selectedSubjects, setSelectedSubjects] = useState([]);
-  const [testDuration, setTestDuration] = useState(60); // Default 60 minutes
-  const [activeTest, setActiveTest] = useState(null);
-  const [testResults, setTestResults] = useState(null);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [selectedAnswers, setSelectedAnswers] = useState({});
-  const [timeRemaining, setTimeRemaining] = useState(0);
+  const [testCompleted, setTestCompleted] = useState(false);
+  const [testResults, setTestResults] = useState(null);
+  const [remainingTime, setRemainingTime] = useState(0);
+  
+  const timerRef = useRef(null);
+  const startTimeRef = useRef(null);
 
-  // Mock test types
-  const testTypes = [
-    { 
-      id: 'timed', 
-      name: 'Timed Test', 
-      description: 'Complete all questions within a fixed time limit',
-      icon: '⏱️'
-    },
-    { 
-      id: 'subject', 
-      name: 'Subject-wise Test', 
-      description: 'Focus on specific subjects with dedicated question sets',
-      icon: '📚'
-    },
-    { 
-      id: 'full', 
-      name: 'Full SDE Mock', 
-      description: 'Complete simulation of a software development engineer interview',
-      icon: '💻'
-    },
-    { 
-      id: 'custom', 
-      name: 'Custom Test', 
-      description: 'Create your own test by selecting subjects and duration',
-      icon: '🔧'
+  // Fetch all mock tests on component mount
+  useEffect(() => {
+    const fetchMockTests = async () => {
+      try {
+        setLoading(true);
+        setError(null); // Clear any previous errors
+        console.log('Fetching mock tests...');
+        const data = await getAllMockTests();
+        console.log('Mock tests data:', data);
+        
+        // If no mock tests are available, create some default ones
+        if (!data || data.length === 0) {
+          console.log('No mock tests available, creating default ones');
+          setMockTests([
+            {
+              _id: 'default-timed',
+              title: 'Timed Mock Test',
+              description: 'A timed mock test with questions from various subjects',
+              testType: 'timed',
+              duration: 1800, // 30 minutes
+              totalMarks: 100
+            },
+            {
+              _id: 'default-subject',
+              title: 'Subject-wise Mock Test',
+              description: 'A subject-focused mock test with questions from a single subject',
+              testType: 'subject',
+              duration: 1800, // 30 minutes
+              totalMarks: 100
+            },
+            {
+              _id: 'default-full',
+              title: 'Full SDE Mock Test',
+              description: 'A comprehensive mock test covering all subjects',
+              testType: 'full',
+              duration: 3600, // 60 minutes
+              totalMarks: 200
+            }
+          ]);
+        } else {
+          setMockTests(data);
+        }
+      } catch (err) {
+        console.error('Error fetching mock tests:', err);
+        setError(`Failed to load mock tests: ${err.message || 'Unknown error'}`);
+        
+        // Set default mock tests on error
+        setMockTests([
+          {
+            _id: 'default-timed',
+            title: 'Timed Mock Test',
+            description: 'A timed mock test with questions from various subjects',
+            testType: 'timed',
+            duration: 1800, // 30 minutes
+            totalMarks: 100
+          },
+          {
+            _id: 'default-subject',
+            title: 'Subject-wise Mock Test',
+            description: 'A subject-focused mock test with questions from a single subject',
+            testType: 'subject',
+            duration: 1800, // 30 minutes
+            totalMarks: 100
+          },
+          {
+            _id: 'default-full',
+            title: 'Full SDE Mock Test',
+            description: 'A comprehensive mock test covering all subjects',
+            testType: 'full',
+            duration: 3600, // 60 minutes
+            totalMarks: 200
+          }
+        ]);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchMockTests();
+  }, []);
+  
+  // Timer effect
+  useEffect(() => {
+    if (activeMockTest && remainingTime > 0) {
+      timerRef.current = setInterval(() => {
+        const elapsed = Math.floor((Date.now() - startTimeRef.current) / 1000);
+        const remaining = Math.max(0, remainingTime - elapsed);
+        
+        setRemainingTime(remaining);
+        
+        if (remaining === 0) {
+          clearInterval(timerRef.current);
+          finishTest();
+        }
+      }, 1000);
+      
+      return () => clearInterval(timerRef.current);
     }
-  ];
+  }, [activeMockTest, remainingTime]);
+  
+  // Clean up timer on unmount
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+      }
+    };
+  }, []);
 
-  // Sample questions from various subjects for mock tests
-  const questions = {
-    dbms: [
-      {
-        id: 'dbms_mock_1',
-        question: 'What is the primary difference between DBMS and RDBMS?',
-        options: [
-          'DBMS supports single users while RDBMS supports multiple users',
-          'RDBMS follows the relational model, while DBMS may not',
-          'DBMS is more secure than RDBMS',
-          'RDBMS cannot handle large databases, but DBMS can'
-        ],
-        correctAnswer: 1,
-        subject: 'dbms',
-        difficulty: 'medium'
-      },
-      {
-        id: 'dbms_mock_2',
-        question: 'Which of the following is NOT a property of transactions in DBMS?',
-        options: [
-          'Atomicity',
-          'Consistency',
-          'Isolation',
-          'Scalability'
-        ],
-        correctAnswer: 3,
-        subject: 'dbms',
-        difficulty: 'medium'
-      }
-    ],
-    oops: [
-      {
-        id: 'oops_mock_1',
-        question: 'Which OOP concept is used to hide the implementation details and only show the functionality?',
-        options: [
-          'Encapsulation',
-          'Abstraction',
-          'Polymorphism',
-          'Inheritance'
-        ],
-        correctAnswer: 1,
-        subject: 'oops',
-        difficulty: 'easy'
-      },
-      {
-        id: 'oops_mock_2',
-        question: 'Which design pattern is used when an object needs to change its behavior based on its internal state?',
-        options: [
-          'Observer',
-          'State',
-          'Strategy',
-          'Command'
-        ],
-        correctAnswer: 1,
-        subject: 'oops',
-        difficulty: 'hard'
-      }
-    ],
-    'system-design': [
-      {
-        id: 'sd_mock_1',
-        question: 'Which of the following is NOT a key component of microservices architecture?',
-        options: [
-          'Service Discovery',
-          'API Gateway',
-          'Monolithic Database',
-          'Circuit Breaker'
-        ],
-        correctAnswer: 2,
-        subject: 'system-design',
-        difficulty: 'medium'
-      },
-      {
-        id: 'sd_mock_2',
-        question: 'When designing a system that needs to scale to millions of users, which approach is generally most effective?',
-        options: [
-          'Vertical scaling with powerful servers',
-          'Horizontal scaling with load balancing',
-          'Increasing database complexity',
-          'Using a single server with high availability'
-        ],
-        correctAnswer: 1,
-        subject: 'system-design',
-        difficulty: 'medium'
-      }
-    ],
-    aptitude: [
-      {
-        id: 'apt_mock_1',
-        question: 'A train travels at an average speed of 60 km/h for 2.5 hours. How far did it travel?',
-        options: [
-          '120 km',
-          '150 km',
-          '180 km',
-          '200 km'
-        ],
-        correctAnswer: 1,
-        subject: 'aptitude',
-        difficulty: 'easy'
-      },
-      {
-        id: 'apt_mock_2',
-        question: 'If 8 men can complete a work in 20 days, how many men would be required to complete the same work in 10 days?',
-        options: [
-          '4 men',
-          '16 men',
-          '12 men',
-          '40 men'
-        ],
-        correctAnswer: 1,
-        subject: 'aptitude',
-        difficulty: 'medium'
-      }
-    ]
+  const selectMode = (mode) => {
+    setSelectedMode(mode);
+    setSelectedMockTest(null);
   };
 
-  // Toggle subject selection for custom tests
+  const selectMockTest = (test) => {
+    setSelectedMockTest(test);
+  };
+
   const toggleSubjectSelection = (subjectId) => {
     if (selectedSubjects.includes(subjectId)) {
       setSelectedSubjects(selectedSubjects.filter(id => id !== subjectId));
@@ -167,112 +150,153 @@ const MockTests = () => {
     }
   };
 
-  // Generate test with questions based on test type and parameters
-  const generateTest = () => {
-    let testQuestions = [];
-    let timeLimit = testDuration * 60; // Convert minutes to seconds
-    let testSubjects = [];
-
-    switch (selectedTestType) {
-      case 'timed':
-        testSubjects = Object.keys(questions);
-        // Get 2 questions from each subject
-        testSubjects.forEach(subject => {
-          testQuestions = [...testQuestions, ...questions[subject].slice(0, 2)];
-        });
-        break;
+  const generateTest = async () => {
+    try {
+      setLoading(true);
+      setError(null); // Clear any previous errors
+      let test;
       
-      case 'subject':
-        if (selectedSubjects.length > 0) {
-          testSubjects = selectedSubjects;
-        } else {
-          const randomSubject = Object.keys(questions)[Math.floor(Math.random() * Object.keys(questions).length)];
-          testSubjects = [randomSubject];
+      if (selectedMode === 'custom') {
+        if (selectedSubjects.length === 0) {
+          setError('Please select at least one subject');
+          setLoading(false);
+          return;
         }
         
-        testSubjects.forEach(subject => {
-          testQuestions = [...testQuestions, ...questions[subject]];
-        });
-        break;
-      
-      case 'full':
-        testSubjects = Object.keys(questions);
-        // For a full SDE mock, take all available questions
-        testSubjects.forEach(subject => {
-          testQuestions = [...testQuestions, ...questions[subject]];
-        });
-        break;
-      
-      case 'custom':
-        testSubjects = selectedSubjects.length > 0 ? selectedSubjects : Object.keys(questions);
-        // For custom test, select questions from chosen subjects
-        testSubjects.forEach(subject => {
-          testQuestions = [...testQuestions, ...questions[subject]];
-        });
-        break;
-      
-      default:
-        testSubjects = Object.keys(questions);
-        testQuestions = Object.values(questions).flat();
-    }
-
-    // Shuffle questions for randomization
-    testQuestions = shuffleArray(testQuestions);
-
-    setActiveTest({
-      title: getTestTitle(),
-      questions: testQuestions,
-      timeLimit,
-      subjects: testSubjects
-    });
-    
-    setCurrentQuestionIndex(0);
-    setSelectedAnswers({});
-    setTimeRemaining(timeLimit);
-  };
-
-  // Helper to shuffle array
-  const shuffleArray = (array) => {
-    const newArray = [...array];
-    for (let i = newArray.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [newArray[i], newArray[j]] = [newArray[j], newArray[i]];
-    }
-    return newArray;
-  };
-
-  // Generate an appropriate test title based on selections
-  const getTestTitle = () => {
-    switch (selectedTestType) {
-      case 'timed':
-        return `${testDuration}-Minute Timed Test`;
-      case 'subject':
-        if (selectedSubjects.length === 1) {
-          const subject = state.subjects.find(s => s.id === selectedSubjects[0]);
-          return `${subject?.name || 'Subject'} Test`;
+        console.log('Generating custom test with subjects:', selectedSubjects);
+        // Generate custom test with selected subjects
+        const response = await generateCustomMockTest(selectedSubjects, 20); // Limit to 20 questions
+        console.log('Custom test response:', response);
+        test = response.mockTest;
+      } else {
+        // Check if this is a default mock test
+        if (selectedMockTest._id.startsWith('default-')) {
+          console.log('Using default mock test:', selectedMockTest);
+          // Create a mock test structure with sample questions
+          test = {
+            ...selectedMockTest,
+            sections: [
+              {
+                title: 'Sample Section',
+                questions: Array(10).fill(0).map((_, i) => ({
+                  _id: `sample-q-${i}`,
+                  question: `Sample question ${i + 1}?`,
+                  options: [
+                    `Option A for question ${i + 1}`,
+                    `Option B for question ${i + 1}`,
+                    `Option C for question ${i + 1}`,
+                    `Option D for question ${i + 1}`
+                  ],
+                  correctAnswer: Math.floor(Math.random() * 4),
+                  marks: 1,
+                  negativeMarks: 0.25,
+                  explanation: `This is the explanation for question ${i + 1}`,
+                  subject: 'Sample Subject',
+                  difficulty: 'medium'
+                }))
+              }
+            ]
+          };
+        } else {
+          // Fetch existing mock test
+          console.log('Fetching mock test with ID:', selectedMockTest._id);
+          test = await getMockTestById(selectedMockTest._id);
+          console.log('Mock test data:', test);
         }
-        return 'Multi-Subject Test';
-      case 'full':
-        return 'Full SDE Mock Interview';
-      case 'custom':
-        return 'Custom Mock Test';
-      default:
-        return 'Mock Test';
+        
+        // Limit each section to a total of 20 questions
+        const limitedSections = [];
+        let totalQuestions = 0;
+        const maxQuestions = 20;
+        
+        for (const section of test.sections) {
+          if (totalQuestions >= maxQuestions) break;
+          
+          const sectionQuestions = section.questions.slice(0, Math.min(
+            section.questions.length, 
+            maxQuestions - totalQuestions
+          ));
+          
+          limitedSections.push({
+            ...section,
+            questions: sectionQuestions,
+            questionsCount: sectionQuestions.length
+          });
+          
+          totalQuestions += sectionQuestions.length;
+        }
+        
+        test.sections = limitedSections;
+      }
+      
+      // Prepare flat list of questions from all sections
+      const allQuestions = [];
+      
+      test.sections.forEach(section => {
+        section.questions.forEach(question => {
+          allQuestions.push({
+            ...question,
+            sectionTitle: section.title
+          });
+        });
+      });
+      
+      setActiveMockTest(test);
+      setTestQuestions(allQuestions);
+      setCurrentQuestionIndex(0);
+      setSelectedAnswers({});
+      setTestCompleted(false);
+      setTestResults(null);
+      
+      // Set up the timer if test has duration
+      if (test.duration) {
+        setRemainingTime(test.duration);
+        startTimeRef.current = Date.now();
+      }
+      
+      setLoading(false);
+    } catch (err) {
+      console.error('Error generating mock test:', err);
+      setError(`Failed to generate mock test: ${err.message || 'Unknown error'}`);
+      setLoading(false);
     }
+  };
+
+  // Fisher-Yates shuffle algorithm for randomizing questions
+  const shuffleArray = (array) => {
+    const shuffled = [...array];
+    for (let i = shuffled.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    }
+    return shuffled;
+  };
+
+  const getTestTitle = () => {
+    if (!activeMockTest) return '';
+    
+    if (selectedMode === 'custom') {
+      const subjectNames = selectedSubjects.map(id => {
+        const subject = state.subjects.find(s => s._id === id);
+        return subject ? subject.name : '';
+      }).filter(Boolean);
+      
+      return `Custom Mock Test: ${subjectNames.join(', ')}`;
+    }
+    
+    return activeMockTest.title;
   };
 
   const handleAnswerSelect = (questionId, answerIndex) => {
     setSelectedAnswers({
       ...selectedAnswers,
-      [questionId]: answerIndex
+      [questionId]: answerIndex,
     });
   };
 
   const moveToNextQuestion = () => {
-    if (currentQuestionIndex < activeTest.questions.length - 1) {
+    if (currentQuestionIndex < testQuestions.length - 1) {
       setCurrentQuestionIndex(currentQuestionIndex + 1);
-    } else {
-      finishTest();
     }
   };
 
@@ -282,409 +306,614 @@ const MockTests = () => {
     }
   };
 
-  const finishTest = () => {
-    // Calculate test results
-    const totalQuestions = activeTest.questions.length;
-    let correctCount = 0;
+  const finishTest = async () => {
+    // Clear the timer if active
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+    }
     
-    activeTest.questions.forEach(question => {
-      if (selectedAnswers[question.id] === question.correctAnswer) {
-        correctCount++;
-      }
-    });
-
-    const score = Math.round((correctCount / totalQuestions) * 100);
-    const timeTaken = activeTest.timeLimit - timeRemaining;
-
-    const results = {
-      score,
-      totalQuestions,
-      correctAnswers: correctCount,
-      timeTaken,
-      feedback: generateFeedback(score),
-      detailedResults: activeTest.questions.map(question => {
-        const userAnswer = selectedAnswers[question.id];
-        return {
-          questionId: question.id,
-          question: question.question,
-          userAnswer,
-          correctAnswer: question.correctAnswer,
-          isCorrect: userAnswer === question.correctAnswer,
-          subject: question.subject,
-          difficulty: question.difficulty
+    try {
+      setLoading(true);
+      
+      // Format answers by section
+      const sectionAnswers = {};
+      
+      testQuestions.forEach((question, index) => {
+        const sectionTitle = question.sectionTitle;
+        if (!sectionAnswers[sectionTitle]) {
+          sectionAnswers[sectionTitle] = [];
+        }
+        sectionAnswers[sectionTitle].push(
+          selectedAnswers[question._id || index]
+        );
+      });
+      
+      let result;
+      
+      // Check if this is a default mock test
+      if (activeMockTest._id && activeMockTest._id.startsWith('default-')) {
+        console.log('Calculating results for default mock test');
+        // Calculate results locally for default mock tests
+        const totalQuestions = testQuestions.length;
+        let correctAnswers = 0;
+        
+        testQuestions.forEach((question, index) => {
+          const userAnswer = selectedAnswers[question._id || index];
+          if (userAnswer === question.correctAnswer) {
+            correctAnswers++;
+          }
+        });
+        
+        const score = correctAnswers;
+        const percentage = (correctAnswers / totalQuestions) * 100;
+        
+        result = {
+          message: 'Mock test submitted successfully',
+          score,
+          percentage,
+          results: [
+            {
+              sectionTitle: 'Sample Section',
+              questions: testQuestions.map((question, index) => {
+                const userAnswer = selectedAnswers[question._id || index];
+                const isCorrect = userAnswer === question.correctAnswer;
+                
+                return {
+                  question: question.question,
+                  userAnswer,
+                  correctAnswer: question.correctAnswer,
+                  isCorrect,
+                  score: isCorrect ? question.marks : 0,
+                  explanation: question.explanation
+                };
+              })
+            }
+          ]
         };
-      }),
-      subjectPerformance: calculateSubjectPerformance(activeTest.questions, selectedAnswers)
-    };
-
-    setTestResults(results);
-    setActiveTest(null);
-  };
-
-  // Generate personalized feedback based on score
-  const generateFeedback = (score) => {
-    if (score >= 90) {
-      return "Outstanding performance! You're well-prepared for your placements. Keep up the excellent work!";
-    } else if (score >= 75) {
-      return "Great job! You have a solid understanding of the concepts. Focus on the few areas where you made mistakes.";
-    } else if (score >= 60) {
-      return "Good effort! You're on the right track, but need more practice with some concepts. Review the questions you missed.";
-    } else if (score >= 40) {
-      return "You've made a start, but need more consistent practice. Focus on understanding the core concepts before moving to advanced topics.";
-    } else {
-      return "Don't get discouraged! Take time to review the fundamentals and try again. Consider focusing on one subject at a time.";
+        
+        // Update app context with new test completion
+        dispatch({
+          type: 'UPDATE_USER_PROGRESS',
+          payload: { mockTestCompleted: activeMockTest._id }
+        });
+      } else {
+        // Submit answers to the backend for real mock tests
+        result = await submitMockTestAttempt(
+          activeMockTest._id,
+          sectionAnswers
+        );
+        
+        // Update app context with new test completion
+        dispatch({
+          type: 'UPDATE_USER_PROGRESS',
+          payload: { mockTestCompleted: activeMockTest._id }
+        });
+      }
+      
+      setTestResults(result);
+      setTestCompleted(true);
+      setLoading(false);
+    } catch (err) {
+      console.error('Error submitting mock test:', err);
+      setError('Failed to submit mock test. Please try again later.');
+      setLoading(false);
     }
   };
 
-  // Calculate performance by subject
+  const generateFeedback = (score) => {
+    if (score >= 90) {
+      return "Excellent! You have mastered this subject. Ready for the placement interviews!";
+    } else if (score >= 75) {
+      return "Great job! You have a strong understanding of the subject. Review a few weak areas.";
+    } else if (score >= 60) {
+      return "Good effort! You're on the right track, but need to strengthen your knowledge in some areas.";
+    } else if (score >= 40) {
+      return "You've made a start, but need more practice. Focus on the topics you missed.";
+    } else {
+      return "You need to review this subject thoroughly. Don't worry, with practice you'll improve!";
+    }
+  };
+
   const calculateSubjectPerformance = (questions, answers) => {
-    const subjectStats = {};
+    const subjectPerformance = {};
     
-    questions.forEach(question => {
+    questions.forEach((question, index) => {
+      const questionId = question._id || index;
+      const userAnswer = answers[questionId];
+      const isCorrect = userAnswer === question.correctAnswer;
+      
       const subject = question.subject;
-      if (!subjectStats[subject]) {
-        subjectStats[subject] = {
+      if (!subjectPerformance[subject]) {
+        subjectPerformance[subject] = {
           total: 0,
           correct: 0,
-          percent: 0
+          percentage: 0
         };
       }
       
-      subjectStats[subject].total += 1;
-      if (answers[question.id] === question.correctAnswer) {
-        subjectStats[subject].correct += 1;
+      subjectPerformance[subject].total++;
+      if (isCorrect) {
+        subjectPerformance[subject].correct++;
       }
     });
     
     // Calculate percentages
-    Object.keys(subjectStats).forEach(subject => {
-      subjectStats[subject].percent = Math.round(
-        (subjectStats[subject].correct / subjectStats[subject].total) * 100
-      );
+    Object.keys(subjectPerformance).forEach(subject => {
+      const { total, correct } = subjectPerformance[subject];
+      subjectPerformance[subject].percentage = Math.round((correct / total) * 100);
     });
     
-    return subjectStats;
+    return subjectPerformance;
   };
 
   const resetTest = () => {
-    setSelectedTestType(null);
-    setSelectedSubjects([]);
-    setActiveTest(null);
+    setActiveMockTest(null);
+    setSelectedMockTest(null);
+    setTestQuestions([]);
+    setCurrentQuestionIndex(0);
+    setSelectedAnswers({});
+    setTestCompleted(false);
     setTestResults(null);
+    setRemainingTime(0);
   };
 
-  // Render test type selection
-  if (!selectedTestType) {
+  const formatTime = (seconds) => {
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    const remainingSeconds = seconds % 60;
+    
+    return hours > 0
+      ? `${hours}:${minutes < 10 ? '0' : ''}${minutes}:${remainingSeconds < 10 ? '0' : ''}${remainingSeconds}`
+      : `${minutes}:${remainingSeconds < 10 ? '0' : ''}${remainingSeconds}`;
+  };
+  
+  if (loading && !activeMockTest) {
     return (
-      <div className="py-6">
-        <h2 className="text-2xl font-bold text-gray-800 mb-6">Mock Tests</h2>
-        <p className="text-gray-600 mb-8">
-          Challenge yourself with a variety of mock tests designed to simulate real interview conditions.
-          Choose the test format that best suits your preparation needs.
-        </p>
+      <div className="flex justify-center items-center h-full">
+        <div className="spinner"></div>
+        <p className="ml-2">Loading mock tests...</p>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="text-center p-4">
+        <div className="text-red-600 mb-4">{error}</div>
+        <button 
+          className="px-4 py-2 bg-blue-500 text-white rounded-md"
+          onClick={() => setError(null)}
+        >
+          Try Again
+        </button>
+      </div>
+    );
+  }
+
+  // Show mode selection if no mode is selected
+  if (!selectedMode) {
+    return (
+      <div className="p-6">
+        <h1 className="text-3xl font-bold mb-8">Mock Tests</h1>
         
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {testTypes.map(type => (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          <AnimatedCard
+            className="p-6 cursor-pointer hover:shadow-lg transition-all bg-blue-500 text-white"
+            onClick={() => selectMode('timed')}
+          >
+            <h3 className="text-xl font-medium mb-3">Timed Tests</h3>
+            <p>Complete tests with fixed time limits to simulate exam conditions.</p>
+          </AnimatedCard>
+          
+          <AnimatedCard
+            className="p-6 cursor-pointer hover:shadow-lg transition-all bg-purple-500 text-white"
+            onClick={() => selectMode('subject')}
+          >
+            <h3 className="text-xl font-medium mb-3">Subject-wise Tests</h3>
+            <p>Focus on one subject at a time with specialized tests.</p>
+          </AnimatedCard>
+          
+          <AnimatedCard
+            className="p-6 cursor-pointer hover:shadow-lg transition-all bg-orange-500 text-white"
+            onClick={() => selectMode('full')}
+          >
+            <h3 className="text-xl font-medium mb-3">Full SDE Mocks</h3>
+            <p>Comprehensive tests covering all subjects for complete preparation.</p>
+          </AnimatedCard>
+          
             <AnimatedCard
-              key={type.id}
-              onClick={() => setSelectedTestType(type.id)}
-              className="cursor-pointer hover:shadow-lg transition-shadow border rounded-xl p-6"
-            >
-              <div className="flex items-start">
-                <span className="text-3xl mr-4">{type.icon}</span>
-                <div>
-                  <h3 className="text-xl font-semibold text-gray-800 mb-2">{type.name}</h3>
-                  <p className="text-gray-600">{type.description}</p>
-                </div>
-              </div>
+            className="p-6 cursor-pointer hover:shadow-lg transition-all bg-green-500 text-white"
+            onClick={() => selectMode('custom')}
+          >
+            <h3 className="text-xl font-medium mb-3">Custom Tests</h3>
+            <p>Create your own test by selecting the subjects you want to practice.</p>
             </AnimatedCard>
-          ))}
         </div>
       </div>
     );
   }
 
-  // Render test configuration
-  if (!activeTest && !testResults) {
+  // Show subject selection for custom tests
+  if (selectedMode === 'custom' && !activeMockTest) {
     return (
-      <div className="py-6">
+      <div className="p-6">
+        <div className="flex justify-between items-center mb-6">
+          <h1 className="text-3xl font-bold">Create Custom Test</h1>
         <button 
-          onClick={() => setSelectedTestType(null)}
-          className="flex items-center text-blue-600 hover:text-blue-800 mb-6"
+            className="px-4 py-2 bg-gray-200 text-gray-700 rounded-md"
+            onClick={() => setSelectedMode(null)}
         >
-          <span className="mr-2">←</span> Back to Test Types
+            Back
         </button>
+        </div>
         
-        <h2 className="text-2xl font-bold text-gray-800 mb-2">
-          {testTypes.find(t => t.id === selectedTestType)?.name}
-        </h2>
-        <p className="text-gray-600 mb-8">Configure your test settings below</p>
+        <h2 className="text-xl font-medium mb-4">Select Subjects (at least one)</h2>
         
-        {/* Subject selection (for subject-wise and custom tests) */}
-        {(selectedTestType === 'subject' || selectedTestType === 'custom') && (
-          <div className="mb-8">
-            <h3 className="text-lg font-semibold text-gray-800 mb-4">Select Subjects</h3>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {state.subjects.map(subject => (
-                <div 
-                  key={subject.id}
-                  onClick={() => toggleSubjectSelection(subject.id)}
-                  className={`
-                    p-4 border rounded-lg cursor-pointer 
-                    ${selectedSubjects.includes(subject.id) 
-                      ? 'border-blue-500 bg-blue-400' 
-                      : 'hover:bg-gray-600'}
-                  `}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
+          {state.subjects.map((subject) => (
+            <div 
+              key={subject._id}
+              className={`p-4 rounded-md border cursor-pointer transition-all ${
+                selectedSubjects.includes(subject._id)
+                  ? 'border-green-500 bg-green-50'
+                  : 'border-gray-200 hover:border-green-300'
+              }`}
+              onClick={() => toggleSubjectSelection(subject._id)}
                 >
                   <div className="flex items-center">
                     <input 
                       type="checkbox" 
-                      checked={selectedSubjects.includes(subject.id)}
-                      onChange={() => {}} // Controlled by parent div click
-                      className="mr-3"
+                  checked={selectedSubjects.includes(subject._id)}
+                  onChange={() => {}}
+                  className="mr-3 h-4 w-4 text-green-500"
                     />
                     <span>{subject.name}</span>
                   </div>
                 </div>
               ))}
             </div>
-          </div>
-        )}
-        {/* Duration selection (for timed and custom tests) */}
-        {(selectedTestType === 'timed' || selectedTestType === 'custom') && (
-          <div className="mb-8">
-            <h3 className="text-lg font-semibold text-gray-800 mb-4">Test Duration</h3>
-            <div className="flex items-center space-x-4">
-              <input
-                type="range"
-                min="15"
-                max="180"
-                step="15"
-                value={testDuration}
-                onChange={(e) => setTestDuration(parseInt(e.target.value))}
-                className="w-64"
-              />
-              <span className="text-lg font-medium text-gray-800">{testDuration} minutes</span>
-            </div>
-          </div>
-        )}
         
-        {/* Test summary */}
-        <div className="bg-white rounded-lg p-6 mb-8 border border-gray-200">
-          <h3 className="text-lg font-semibold text-gray-800 mb-3">Test Summary</h3>
-          <ul className="space-y-2 text-gray-800">
-            <li>
-              <span className="font-medium">Test Type:</span> {testTypes.find(t => t.id === selectedTestType)?.name}
-            </li>
-            {(selectedTestType === 'subject' || selectedTestType === 'custom') && selectedSubjects.length > 0 && (
-              <li>
-                <span className="font-medium">Selected Subjects:</span> {selectedSubjects.map(
-                  id => state.subjects.find(s => s.id === id)?.name
-                ).join(', ')}
-              </li>
-            )}
-            {(selectedTestType === 'timed' || selectedTestType === 'custom') && (
-              <li>
-                <span className="font-medium">Duration:</span> {testDuration} minutes
-              </li>
-            )}
-          </ul>
+        <button 
+          className={`px-6 py-3 rounded-md font-medium ${
+            selectedSubjects.length > 0 
+              ? 'bg-green-600 text-white hover:bg-green-700'
+              : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+          }`}
+          onClick={generateTest}
+          disabled={selectedSubjects.length === 0}
+        >
+          Generate Test
+        </button>
+        </div>
+    );
+  }
+
+  // Show test selection for other modes
+  if (!selectedMockTest && !activeMockTest) {
+    const filteredTests = mockTests.filter(test => {
+      if (selectedMode === 'timed') return test.testType === 'timed';
+      if (selectedMode === 'subject') return test.testType === 'subject';
+      if (selectedMode === 'full') return test.testType === 'full';
+      return false;
+    });
+    
+    return (
+      <div className="p-6">
+        <div className="flex justify-between items-center mb-6">
+          <h1 className="text-3xl font-bold">
+            {selectedMode === 'timed' && 'Timed Tests'}
+            {selectedMode === 'subject' && 'Subject-wise Tests'}
+            {selectedMode === 'full' && 'Full SDE Mocks'}
+          </h1>
+          <button
+            className="px-4 py-2 bg-gray-200 text-gray-700 rounded-md"
+            onClick={() => setSelectedMode(null)}
+          >
+            Back
+          </button>
         </div>
         
-        <div className="flex justify-end">
-          <button
-            onClick={generateTest}
-            className="bg-blue-700 hover:bg-blue-800 text-white font-semibold px-6 py-3 rounded-md"
+        {filteredTests.length === 0 ? (
+          <p>No tests available for this category.</p>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {filteredTests.map((test) => (
+              <AnimatedCard
+                key={test._id}
+                className="p-6 cursor-pointer hover:shadow-lg transition-all bg-white border border-gray-200"
+                onClick={() => selectMockTest(test)}
+              >
+                <h3 className="text-xl font-medium">{test.title}</h3>
+                <p className="text-gray-600 mt-2">{test.description}</p>
+                <div className="mt-4">
+                  <div className="flex items-center mb-2">
+                    <span className="mr-2">Duration:</span>
+                    <span className="font-semibold">{formatTime(test.duration)}</span>
+                  </div>
+                  <div className="flex items-center">
+                    <span className="mr-2">Total Marks:</span>
+                    <span className="font-semibold">{test.totalMarks}</span>
+                  </div>
+                </div>
+              </AnimatedCard>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // Show test details before starting
+  if (selectedMockTest && !activeMockTest) {
+    return (
+      <div className="max-w-3xl mx-auto p-6">
+        <div className="flex justify-between items-center mb-6">
+          <h1 className="text-3xl font-bold">{selectedMockTest.title}</h1>
+          <button 
+            className="px-4 py-2 bg-gray-200 text-gray-700 rounded-md"
+            onClick={() => setSelectedMockTest(null)}
           >
-            Start Test
+            Back
           </button>
+        </div>
+        
+        <div className="bg-white p-6 rounded-lg shadow-lg mb-6">
+          <p className="text-lg mb-4">{selectedMockTest.description}</p>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+            <div className="p-4 bg-blue-50 rounded-md">
+              <div className="font-medium mb-1">Duration</div>
+              <div className="text-xl">{formatTime(selectedMockTest.duration)}</div>
+            </div>
+            
+            <div className="p-4 bg-green-50 rounded-md">
+              <div className="font-medium mb-1">Total Marks</div>
+              <div className="text-xl">{selectedMockTest.totalMarks}</div>
+            </div>
+            
+            <div className="p-4 bg-purple-50 rounded-md">
+              <div className="font-medium mb-1">Passing Score</div>
+              <div className="text-xl">{selectedMockTest.passingMarks}%</div>
+          </div>
+            
+            <div className="p-4 bg-amber-50 rounded-md">
+              <div className="font-medium mb-1">Difficulty</div>
+              <div className="text-xl capitalize">{selectedMockTest.difficulty}</div>
+        </div>
+          </div>
+          
+          <div className="mt-6">
+            <h3 className="text-lg font-medium mb-3">Test Sections</h3>
+            <div className="space-y-3">
+              {selectedMockTest.sections?.map((section, index) => (
+                <div key={index} className="p-3 border border-gray-200 rounded-md">
+                  <div className="font-medium">{section.title}</div>
+                  <div className="text-sm text-gray-600 mt-1">
+                    Questions: {section.questionsCount} · 
+                    Marks: {section.totalMarks}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+        
+          <div className="mt-8 flex justify-center">
+          <button
+              className="px-6 py-3 bg-blue-600 text-white rounded-md font-medium hover:bg-blue-700"
+              onClick={generateTest}
+            >
+              Start Test
+            </button>
+          </div>
         </div>
       </div>
     );
   }
 
-  // Render active test
-  if (activeTest) {
-    const currentQuestion = activeTest.questions[currentQuestionIndex];
+  // Show test results if completed
+  if (testCompleted && testResults) {
+    const score = testResults.percentage;
+    const feedback = generateFeedback(score);
+    const subjectPerformance = calculateSubjectPerformance(testQuestions, selectedAnswers);
+    
     return (
-      <div className="py-6">
-        <div className="flex justify-between items-center mb-6">
-          <h2 className="text-2xl font-bold text-gray-800">{activeTest.title}</h2>
-          <div className="text-right">
-            <div className="text-sm text-gray-800 mb-1">Question {currentQuestionIndex + 1} of {activeTest.questions.length}</div>
-            <div className="text-sm font-medium text-blue-600">
-              Time Remaining: {Math.floor(timeRemaining / 60)}:{String(timeRemaining % 60).padStart(2, '0')}
+      <div className="max-w-3xl mx-auto p-6">
+        <h1 className="text-3xl font-bold mb-8">Test Results</h1>
+        
+        <div className="bg-white p-6 rounded-lg shadow-lg mb-6">
+          <div className="mb-6">
+            <h2 className="text-2xl font-medium mb-2">Your Score</h2>
+            <div className="flex items-center justify-center">
+              <div className={`w-48 h-48 rounded-full bg-gray-100 flex flex-col items-center justify-center border-8 ${
+                score >= activeMockTest.passingMarks ? 'border-green-500' : 'border-red-500'
+              }`}>
+                <span className="text-4xl font-bold">{Math.round(score)}%</span>
+                <span className="text-gray-500 mt-2">
+                  {testResults.score} / {activeMockTest.totalMarks} marks
+                </span>
+              </div>
+            </div>
+            
+            <div className="mt-4 text-center">
+              <div className={`text-lg font-medium ${
+                score >= activeMockTest.passingMarks ? 'text-green-600' : 'text-red-600'
+              }`}>
+                {score >= activeMockTest.passingMarks ? 'PASSED' : 'FAILED'}
+              </div>
+              <p className="mt-2 text-gray-700">
+                {feedback}
+              </p>
             </div>
           </div>
+          
+          <div className="mt-8">
+            <h3 className="text-xl font-medium mb-4">Section Performance</h3>
+            {testResults.results.map((section, index) => (
+              <div key={index} className="mb-6">
+                <div className="flex justify-between items-center mb-2">
+                  <h4 className="font-medium">{section.sectionTitle}</h4>
+                  <span className="text-sm bg-blue-100 text-blue-800 py-1 px-2 rounded">
+                    Score: {Math.round((section.questions.filter(q => q.isCorrect).length / section.questions.length) * 100)}%
+                  </span>
+          </div>
+          
+                <div className="h-2 bg-gray-200 rounded-full overflow-hidden mb-2">
+                  <div 
+                    className="h-full bg-blue-600" 
+                    style={{ width: `${(section.questions.filter(q => q.isCorrect).length / section.questions.length) * 100}%` }}
+                  ></div>
+                  </div>
+                
+                <div className="text-xs text-gray-500 mb-4">
+                  {section.questions.filter(q => q.isCorrect).length} correct out of {section.questions.length} questions
+                </div>
+              </div>
+            ))}
+          </div>
+          
+          <div className="mt-8">
+            <h3 className="text-xl font-medium mb-4">Subject Performance</h3>
+            {Object.entries(subjectPerformance).map(([subject, data], index) => (
+              <div key={index} className="mb-4">
+                <div className="flex justify-between items-center mb-2">
+                  <h4 className="font-medium">{subject}</h4>
+                  <span className="text-sm bg-blue-100 text-blue-800 py-1 px-2 rounded">
+                    {data.percentage}%
+                  </span>
+                </div>
+                
+                <div className="h-2 bg-gray-200 rounded-full overflow-hidden mb-2">
+                  <div 
+                    className={`h-full ${
+                      data.percentage >= 80 ? 'bg-green-600' :
+                      data.percentage >= 60 ? 'bg-blue-600' :
+                      data.percentage >= 40 ? 'bg-yellow-600' : 'bg-red-600'
+                    }`}
+                    style={{ width: `${data.percentage}%` }}
+                  ></div>
+                  </div>
+                
+                <div className="text-xs text-gray-500">
+                  {data.correct} correct out of {data.total} questions
+                </div>
+              </div>
+            ))}
         </div>
-        <div className="bg-white shadow-md rounded-lg p-6 mb-6">
-          <div className="flex justify-between items-start mb-4">
-            <h3 className="text-xl font-semibold text-gray-800">{currentQuestion.question}</h3>
-            <span className="text-xs font-medium px-2 py-1 bg-blue-100 text-blue-800 rounded-full">
-              {state.subjects.find(s => s.id === currentQuestion.subject)?.name || currentQuestion.subject}
+        
+          <div className="mt-8 flex justify-center">
+          <button
+              className="px-6 py-3 bg-blue-600 text-white rounded-md font-medium hover:bg-blue-700"
+            onClick={resetTest}
+          >
+              Back to Mock Tests
+          </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Show active test
+  const currentQuestion = testQuestions[currentQuestionIndex];
+  const progress = ((currentQuestionIndex + 1) / testQuestions.length) * 100;
+  const questionId = currentQuestion?._id || currentQuestionIndex;
+  
+  return (
+    <div className="max-w-3xl mx-auto p-6">
+      <div className="flex justify-between items-center mb-6">
+        <h1 className="text-2xl font-bold">{getTestTitle()}</h1>
+        {remainingTime > 0 && (
+          <div className="text-xl font-medium">
+            Time: <span className={remainingTime < 300 ? 'text-red-600' : ''}>
+              {formatTime(remainingTime)}
             </span>
           </div>
-          
-          <div className="space-y-3 mb-6">
-            {currentQuestion.options.map((option, index) => (
-              <div 
-                key={index}
-                onClick={() => handleAnswerSelect(currentQuestion.id, index)}
-                className={`
-                  p-4 border rounded-lg cursor-pointer transition-colors 
-                  ${selectedAnswers[currentQuestion.id] === index ? 'border-blue-500 bg-blue-50' : 'hover:bg-gray-50'}
-                `}
-              >
-                <div className="flex items-center">
-                  <div className={`
-                    w-6 h-6 rounded-full flex items-center justify-center mr-3 border
-                    ${selectedAnswers[currentQuestion.id] === index ? 'border-blue-500 bg-blue-500 text-white' : 'border-gray-300 text-gray-700'}
-                  `}>
-                    {String.fromCharCode(65 + index)}
-                  </div>
-                  <span className="text-gray-800">{option}</span>
-                </div>
-              </div>
-            ))}
+        )}
+      </div>
+      
+      <div className="mb-6">
+        <ProgressBar progress={progress} />
+        <div className="mt-2 text-sm text-gray-600 flex justify-between">
+          <div>
+            Question {currentQuestionIndex + 1} of {testQuestions.length}
           </div>
-        </div>
-        
-        <div className="flex justify-between">
-          <button
-            onClick={moveToPreviousQuestion}
-            className="px-4 py-2 border rounded-md hover:bg-gray-50"
-            disabled={currentQuestionIndex === 0}
-          >
-            Previous
-          </button>
-          
-          <div className="flex space-x-3">
-            <button
-              onClick={finishTest}
-              className="px-4 py-2 border border-red-500 text-red-500 rounded-md hover:bg-red-50"
-            >
-              End Test
-            </button>
-            <button
-              onClick={moveToNextQuestion}
-              className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
-            >
-              {currentQuestionIndex === activeTest.questions.length - 1 ? 'Finish' : 'Next'}
-            </button>
+          <div>
+            Section: {currentQuestion?.sectionTitle}
           </div>
         </div>
       </div>
-    );
-  }
-
-  // Render test results
-  if (testResults) {
-    return (
-      <div className="py-6">
-        <h2 className="text-2xl font-bold text-gray-800 mb-6">Test Results</h2>
-        
-        <div className="bg-white shadow-lg rounded-xl p-8 mb-8">
-          <div className="flex justify-between items-center mb-8">
-            <h3 className="text-xl font-semibold text-gray-800">Your Score</h3>
-            <div className="text-4xl font-bold text-blue-600">{testResults.score}%</div>
-          </div>
-          
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-            <div className="border rounded-lg p-4">
-              <div className="text-gray-600 mb-1">Questions</div>
-              <div className="text-2xl font-semibold">
-                {testResults.correctAnswers}/{testResults.totalQuestions} correct
-              </div>
+      
+      <div className="bg-white p-6 rounded-lg shadow-lg mb-6">
+        {currentQuestion && (
+          <>
+            <div className="mb-6">
+              <h2 className="text-xl font-medium mb-2">{currentQuestion.question}</h2>
             </div>
             
-            <div className="border rounded-lg p-4">
-              <div className="text-gray-600 mb-1">Time Taken</div>
-              <div className="text-2xl font-semibold">
-                {Math.floor(testResults.timeTaken / 60)}:{String(testResults.timeTaken % 60).padStart(2, '0')}
-              </div>
+            <div className="space-y-3">
+              {currentQuestion.options.map((option, index) => (
+                <div 
+                  key={index}
+                  className={`p-4 rounded-md border cursor-pointer transition-all ${
+                    selectedAnswers[questionId] === index 
+                      ? 'border-blue-500 bg-blue-50' 
+                      : 'border-gray-200 hover:border-blue-300'
+                  }`}
+                  onClick={() => handleAnswerSelect(questionId, index)}
+                >
+                  <div className="flex items-center">
+                    <div className={`w-6 h-6 rounded-full border flex items-center justify-center mr-3 ${
+                      selectedAnswers[questionId] === index
+                        ? 'border-blue-500 bg-blue-500 text-white'
+                        : 'border-gray-400'
+                    }`}>
+                      {String.fromCharCode(65 + index)}
+                    </div>
+                    <span>{option}</span>
+                  </div>
+                </div>
+              ))}
             </div>
             
-            <div className="border rounded-lg p-4">
-              <div className="text-gray-600 mb-1">Performance</div>
-              <div className="text-2xl font-semibold text-gray-800">
-                {testResults.score >= 80 ? 'Excellent' : testResults.score >= 60 ? 'Good' : testResults.score >= 40 ? 'Average' : 'Needs Improvement'}
-              </div>
+            <div className="mt-4 text-sm text-gray-600">
+              <div>Marks: {currentQuestion.marks || 1}</div>
+              {currentQuestion.negativeMarks > 0 && (
+                <div className="text-red-600">
+                  Negative marks: {currentQuestion.negativeMarks}
+                </div>
+              )}
             </div>
-          </div>
-          
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-10">
-            <h4 className="font-semibold text-blue-800 mb-2">AI Feedback</h4>
-            <p className="text-blue-700">{testResults.feedback}</p>
-          </div>
-          
-          {/* Subject-wise performance */}
-          <h4 className="text-lg font-semibold text-gray-800 mb-4">Subject Performance</h4>
-          <div className="space-y-4 mb-10">
-            {Object.entries(testResults.subjectPerformance).map(([subject, stats]) => {
-              const subjectInfo = state.subjects.find(s => s.id === subject);
-              return (
-                <div key={subject} className="border rounded-lg p-4">
-                  <div className="flex justify-between mb-2">
-                    <span className="font-medium text-gray-800">{subjectInfo?.name || subject}</span>
-                    <span className={`
-                      font-semibold
-                      ${stats.percent >= 80 ? 'text-green-600' : 
-                        stats.percent >= 60 ? 'text-blue-600' : 
-                        stats.percent >= 40 ? 'text-yellow-600' : 'text-red-600'}
-                    `}>
-                      {stats.percent}%
-                    </span>
-                  </div>
-                  <ProgressBar 
-                    progress={stats.percent}
-                    className="h-2 bg-gray-200"
-                    barClassName={`
-                      ${stats.percent >= 80 ? 'bg-green-500' : 
-                        stats.percent >= 60 ? 'bg-blue-500' : 
-                        stats.percent >= 40 ? 'bg-yellow-500' : 'bg-red-500'}
-                    `}
-                  />
-                  <div className="mt-1 text-sm text-gray-600">
-                    {stats.correct} of {stats.total} questions correct
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-          
-          <h4 className="text-lg font-semibold text-gray-800 mb-4">Question Analysis</h4>
-          <div className="space-y-3 mb-6">
-            {testResults.detailedResults.map((result, index) => (
-              <div key={index} className="flex items-center">
-                <div className={`w-6 h-6 rounded-full flex items-center justify-center mr-3 
-                  ${result.isCorrect ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'}`}>
-                  {result.isCorrect ? '✓' : '✗'}
-                </div>
-                <div className="flex-grow">
-                  <div className="text-gray-800 truncate">{result.question}</div>
-                  <div className="text-sm text-gray-500">
-                    {state.subjects.find(s => s.id === result.subject)?.name || result.subject} · 
-                    {result.difficulty.charAt(0).toUpperCase() + result.difficulty.slice(1)}
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-        
-        <div className="flex justify-end space-x-4">
-          <button
-            onClick={resetTest}
-            className="px-6 py-3 border rounded-md hover:bg-gray-50"
-          >
-            Take Another Test
-          </button>
-        </div>
+          </>
+        )}
       </div>
-    );
-  }
-
-  return null;
+      
+      <div className="flex justify-between">
+        <button
+          className="px-4 py-2 bg-gray-200 text-gray-700 rounded-md disabled:opacity-50"
+          onClick={moveToPreviousQuestion}
+          disabled={currentQuestionIndex === 0}
+        >
+          Previous
+        </button>
+        
+        {currentQuestionIndex === testQuestions.length - 1 ? (
+          <button
+            className="px-4 py-2 bg-blue-600 text-white rounded-md"
+            onClick={finishTest}
+          >
+            Finish Test
+          </button>
+        ) : (
+          <button
+            className="px-4 py-2 bg-blue-600 text-white rounded-md"
+            onClick={moveToNextQuestion}
+          >
+            Next
+          </button>
+        )}
+      </div>
+    </div>
+  );
 };
 
 export default MockTests; 
