@@ -30,7 +30,7 @@ const Sidebar = () => {
     ];
 
     const handleModuleChange = (moduleId) => {
-        dispatch({ type: 'SET_ACTIVE_MODULE', payload: moduleId });
+        dispatch({ type: 'SET_CURRENT_MODULE', payload: moduleId });
     };
 
     return (
@@ -50,7 +50,7 @@ const Sidebar = () => {
             <nav className="mt-6 px-4">
                 {menuItems.map((item, index) => {
                     const Icon = item.icon;
-                    const isActive = state.activeModule === item.id;
+                    const isActive = state.currentModule === item.id;
 
                     return (
                         <button

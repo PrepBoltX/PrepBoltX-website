@@ -10,16 +10,16 @@ router.get('/', quizController.getAllQuizzes);
 // Get quiz by ID
 router.get('/:id', quizController.getQuizById);
 
-// Create a new quiz (temporarily removed auth for testing)
-router.post('/', quizController.createQuiz);
+// Create a new quiz (requires auth)
+router.post('/', authMiddleware.protect, quizController.createQuiz);
 
-// Generate quiz using AI (temporarily removed auth for testing)
-router.post('/generate', quizController.generateQuiz);
+// Generate quiz using AI (requires auth)
+router.post('/generate', authMiddleware.protect, quizController.generateQuiz);
 
-// Generate quiz using external APIs (temporarily removed auth for testing)
-router.post('/generate-external', quizController.generateExternalQuiz);
+// Generate quiz using external APIs (requires auth)
+router.post('/generate-external', authMiddleware.protect, quizController.generateExternalQuiz);
 
-// Submit quiz attempt (temporarily removed auth for testing)
-router.post('/submit', quizController.submitQuizAttempt);
+// Submit quiz attempt (requires auth)
+router.post('/submit', authMiddleware.protect, quizController.submitQuizAttempt);
 
 module.exports = router; 

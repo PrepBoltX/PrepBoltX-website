@@ -234,3 +234,8 @@
     color: #f7fafc;
   }
 }
+
+/* Form element text color for better contrast */
+input, textarea, select {
+  @apply text-black;
+}

@@ -10,6 +10,9 @@ router.post('/register', authController.register);
 // Login user
 router.post('/login', authController.login);
 
+// Google Authentication
+router.post('/google', authController.googleAuth);
+
 // Get user profile (protected route)
 router.get('/profile', authMiddleware.protect, authController.getProfile);
 

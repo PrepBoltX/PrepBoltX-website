@@ -525,7 +525,7 @@ const MockInterviews = () => {
                 <textarea
                   id="response"
                   rows="6"
-                  className="w-full border rounded-md p-3 focus:ring-blue-500 focus:border-blue-500"
+                  className="w-full border rounded-md p-3 focus:ring-blue-500 focus:border-blue-500 text-black"
                   placeholder="Type your response here..."
                   value={currentResponse}
                   onChange={handleResponseChange}

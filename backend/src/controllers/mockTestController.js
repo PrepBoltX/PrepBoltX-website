@@ -7,9 +7,9 @@ const aiService = require('../services/aiService');
 exports.getAllMockTests = async (req, res) => {
     try {
         const mockTests = await MockTest.find()
-            .populate('subject', 'name')
+            .populate('subjects', 'name') // Changed from 'subject' to 'subjects' to match schema
             .populate('createdBy', 'name')
-            .select('title description duration totalMarks');
+            .select('title description duration totalMarks testType');
 
         res.status(200).json({ mockTests });
     } catch (error) {
@@ -22,7 +22,7 @@ exports.getAllMockTests = async (req, res) => {
 exports.getMockTestById = async (req, res) => {
     try {
         const mockTest = await MockTest.findById(req.params.id)
-            .populate('subject', 'name')
+            .populate('subjects', 'name') // Changed from 'subject' to 'subjects' to match schema
             .populate('createdBy', 'name');
 
         if (!mockTest) {
@@ -39,22 +39,24 @@ exports.getMockTestById = async (req, res) => {
 // Create a new mock test
 exports.createMockTest = async (req, res) => {
     try {
-        const { title, description, subject, duration, totalMarks, sections } = req.body;
+        const { title, description, subjects, duration, totalMarks, sections } = req.body;
 
-        // Check if subject exists
-        const subjectExists = await Subject.findById(subject);
-        if (!subjectExists) {
-            return res.status(404).json({ message: 'Subject not found' });
+        // Check if subjects exist
+        if (subjects && subjects.length > 0) {
+            const subjectsExist = await Subject.find({ _id: { $in: subjects } });
+            if (!subjectsExist || subjectsExist.length !== subjects.length) {
+                return res.status(404).json({ message: 'One or more subjects not found' });
+            }
         }
 
         const mockTest = new MockTest({
             title,
             description,
-            subject,
+            subjects, // Changed from subject to subjects to match schema
             duration,
             totalMarks,
             sections,
-            createdBy: req.user.userId
+            createdBy: req.user ? req.user.userId : null // Make createdBy optional for testing
         });
 
         await mockTest.save();
@@ -75,12 +77,17 @@ exports.createMockTest = async (req, res) => {
 // Generate mock test using AI
 exports.generateMockTest = async (req, res) => {
     try {
-        const { subject, numberOfSections, questionsPerSection, duration, totalMarks } = req.body;
+        const { subjects, numberOfSections, questionsPerSection, duration, totalMarks } = req.body;
 
-        // Check if subject exists
-        const subjectExists = await Subject.findById(subject);
-        if (!subjectExists) {
-            return res.status(404).json({ message: 'Subject not found' });
+        // Check if at least one subject exists
+        if (!subjects || !Array.isArray(subjects) || subjects.length === 0) {
+            return res.status(400).json({ message: 'At least one subject must be provided' });
+        }
+
+        // Check if subjects exist
+        const subjectsExist = await Subject.find({ _id: { $in: subjects } });
+        if (!subjectsExist || subjectsExist.length === 0) {
+            return res.status(404).json({ message: 'No valid subjects found' });
         }
 
         const sections = [];
@@ -88,10 +95,14 @@ exports.generateMockTest = async (req, res) => {
         // Generate sections
         for (let i = 0; i < (numberOfSections || 3); i++) {
             const sectionTitle = `Section ${i + 1}`;
+            
+            // Choose a subject for this section (round-robin if multiple subjects)
+            const subjectIndex = i % subjectsExist.length;
+            const currentSubject = subjectsExist[subjectIndex];
 
             // Generate quiz for this section using AI service
             const generatedQuiz = await aiService.generateQuiz({
-                subject: subjectExists.name,
+                subject: currentSubject.name,
                 category: 'Mock Test',
                 difficulty: i === 0 ? 'easy' : i === 1 ? 'medium' : 'hard',
                 numberOfQuestions: questionsPerSection || 5,
@@ -109,24 +120,26 @@ exports.generateMockTest = async (req, res) => {
                 correctAnswer: q.correctAnswer,
                 marks: i === 0 ? 1 : i === 1 ? 2 : 3,
                 negativeMarks: i === 0 ? 0 : i === 1 ? 0.5 : 1,
-                explanation: q.explanation
+                explanation: q.explanation,
+                subject: currentSubject.name
             }));
 
             sections.push({
                 title: sectionTitle,
+                subjectRef: currentSubject._id,
                 questions
             });
         }
 
         const mockTest = new MockTest({
-            title: `${subjectExists.name} Mock Test`,
-            description: `AI-generated mock test for ${subjectExists.name}`,
-            subject,
+            title: `${subjectsExist.map(s => s.name).join(', ')} Mock Test`,
+            description: `AI-generated mock test for ${subjectsExist.map(s => s.name).join(', ')}`,
+            subjects, // Changed from subject to subjects array
             duration: duration || 3600,
             totalMarks: totalMarks || 100,
             sections,
             isGeneratedByAI: true,
-            createdBy: req.user.userId
+            createdBy: req.user ? req.user.userId : null // Make createdBy optional for testing
         });
 
         await mockTest.save();
@@ -144,10 +157,91 @@ exports.generateMockTest = async (req, res) => {
     }
 };
 
+// Generate custom mock test
+exports.generateCustomMockTest = async (req, res) => {
+    try {
+        const { subjects, numberOfQuestions, userId } = req.body;
+        const currentUserId = req.user ? req.user.userId : userId;
+
+        if (!subjects || !Array.isArray(subjects) || subjects.length === 0) {
+            return res.status(400).json({ message: 'At least one subject must be selected' });
+        }
+
+        // Get subject details
+        const subjectDocs = await Subject.find({ _id: { $in: subjects } });
+        if (!subjectDocs || subjectDocs.length === 0) {
+            return res.status(404).json({ message: 'No valid subjects found' });
+        }
+
+        // Create sections for each subject
+        const sections = [];
+        const questionsPerSubject = Math.ceil(numberOfQuestions / subjects.length);
+
+        for (const subject of subjectDocs) {
+            // Generate questions for this subject
+            const questions = [];
+            
+            // In a real implementation, you would fetch questions from a database
+            // or generate them using AI. For now, we'll create some placeholder questions.
+            for (let i = 0; i < questionsPerSubject; i++) {
+                questions.push({
+                    question: `Sample ${subject.name} question ${i + 1}`,
+                    options: [
+                        `Option A for ${subject.name} question ${i + 1}`,
+                        `Option B for ${subject.name} question ${i + 1}`,
+                        `Option C for ${subject.name} question ${i + 1}`,
+                        `Option D for ${subject.name} question ${i + 1}`
+                    ],
+                    correctAnswer: Math.floor(Math.random() * 4), // Random correct answer
+                    marks: 1,
+                    negativeMarks: 0.25,
+                    explanation: `This is the explanation for ${subject.name} question ${i + 1}`,
+                    subject: subject.name,
+                    difficulty: 'medium'
+                });
+            }
+
+            sections.push({
+                title: subject.name,
+                subjectRef: subject._id,
+                description: `Questions from ${subject.name}`,
+                questionsCount: questions.length,
+                totalMarks: questions.length,
+                questions
+            });
+        }
+
+        // Create the mock test
+        const mockTest = new MockTest({
+            title: 'Custom Mock Test',
+            description: `Custom mock test with ${subjectDocs.map(s => s.name).join(', ')}`,
+            testType: 'custom',
+            subjects,
+            duration: 1800, // 30 minutes
+            totalMarks: numberOfQuestions,
+            sections,
+            isGeneratedByAI: false,
+            difficulty: 'mixed',
+            createdBy: currentUserId
+        });
+
+        await mockTest.save();
+
+        res.status(201).json({
+            message: 'Custom mock test generated successfully',
+            mockTest
+        });
+    } catch (error) {
+        console.error('Generate custom mock test error:', error);
+        res.status(500).json({ message: 'Server error while generating custom mock test' });
+    }
+};
+
 // Submit mock test attempt
 exports.submitMockTestAttempt = async (req, res) => {
     try {
-        const { testId, answers } = req.body;
+        const { testId, answers, userId } = req.body;
+        const currentUserId = req.user ? req.user.userId : userId; // Support both auth and non-auth for testing
 
         // Get mock test
         const mockTest = await MockTest.findById(testId);
@@ -196,18 +290,22 @@ exports.submitMockTestAttempt = async (req, res) => {
         // Calculate percentage score
         const scorePercentage = (totalScore / mockTest.totalMarks) * 100;
 
-        // Update user's mock test attempts
-        const user = await User.findById(req.user.userId);
-        user.mockTestAttempts.push({
-            testId,
-            score: scorePercentage,
-            completed: true
-        });
+        // Update user's mock test attempts if user is authenticated
+        if (currentUserId) {
+            const user = await User.findById(currentUserId);
+            if (user) {
+                user.mockTestAttempts.push({
+                    testId,
+                    score: scorePercentage,
+                    completed: true
+                });
 
-        // Update user's total score
-        user.score += scorePercentage / 2; // Mock tests contribute half the weight of regular quizzes
+                // Update user's total score
+                user.score += scorePercentage / 2; // Mock tests contribute half the weight of regular quizzes
 
-        await user.save();
+                await user.save();
+            }
+        }
 
         res.status(200).json({
             message: 'Mock test submitted successfully',

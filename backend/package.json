@@ -8,7 +8,15 @@
     "dev": "nodemon src/index.js",
     "seed": "node src/utils/seedData.js",
     "test": "echo \"Error: no test specified\" && exit 1",
-    "test-external-api": "node src/utils/testExternalAPI.js"
+    "test-external-api": "node src/utils/testExternalAPI.js",
+    "add-clock-calendar": "node src/utils/createClockCalendarQuestions.js",
+    "add-geometry-races-puzzles": "node src/utils/createGeometryRacesPuzzlesQuestions.js",
+    "add-blood-coding-work": "node src/utils/createBloodRelationsCodingWorkQuestions.js",
+    "add-dbms-questions3": "node src/utils/createDBMSQuestions3.js",
+    "add-dbms-quiz1": "node src/utils/createDBMSQuiz1.js",
+    "add-dbms-topics2": "node src/utils/createDBMSTopics2.js",
+    "add-dbms-topics3": "node src/utils/createDBMSTopics3.js",
+    "add-dbms-topics4": "node src/utils/createDBMSTopics4.js"
   },
   "keywords": [
     "placement",
@@ -26,6 +34,7 @@
     "cors": "^2.8.5",
     "dotenv": "^16.3.1",
     "express": "^4.18.2",
+    "google-auth-library": "^9.15.1",
     "jsonwebtoken": "^9.0.1",
     "mongoose": "^7.4.3",
     "multer": "^1.4.5-lts.1"

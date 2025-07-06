@@ -20,6 +20,11 @@ const userSchema = new mongoose.Schema({
         type: String,
         default: ''
     },
+    authProvider: {
+        type: String,
+        enum: ['local', 'google'],
+        default: 'local'
+    },
     role: {
         type: String,
         enum: ['user', 'admin', 'mentor'],
@@ -189,6 +194,12 @@ userSchema.pre('save', async function (next) {
     if (!this.isModified('password')) return next();
 
     try {
+        // Skip password hashing for Google users
+        if (this.authProvider === 'google') {
+            next();
+            return;
+        }
+        
         const salt = await bcrypt.genSalt(10);
         this.password = await bcrypt.hash(this.password, salt);
         next();
@@ -199,6 +210,11 @@ userSchema.pre('save', async function (next) {
 
 // Method to compare password
 userSchema.methods.comparePassword = async function (candidatePassword) {
+    // If user is authenticated via Google, don't compare password
+    if (this.authProvider === 'google') {
+        return false;
+    }
+    
     return await bcrypt.compare(candidatePassword, this.password);
 };
 

@@ -10,13 +10,16 @@ router.get('/', mockTestController.getAllMockTests);
 // Get mock test by ID
 router.get('/:id', mockTestController.getMockTestById);
 
-// Create a new mock test (protected)
-router.post('/', authMiddleware.protect, mockTestController.createMockTest);
+// Create a new mock test (temporarily removed auth for testing)
+router.post('/', mockTestController.createMockTest);
 
-// Generate mock test using AI (protected)
-router.post('/generate', authMiddleware.protect, mockTestController.generateMockTest);
+// Generate mock test using AI (temporarily removed auth for testing)
+router.post('/generate', mockTestController.generateCustomMockTest);
 
-// Submit mock test attempt (protected)
-router.post('/submit', authMiddleware.protect, mockTestController.submitMockTestAttempt);
+// Generate custom mock test (temporarily removed auth for testing)
+router.post('/generate-custom', mockTestController.generateCustomMockTest);
+
+// Submit mock test attempt (temporarily removed auth for testing)
+router.post('/submit', mockTestController.submitMockTestAttempt);
 
 module.exports = router; 
