@@ -18,21 +18,84 @@ exports.getAllMockTests = async (req, res) => {
     }
 };
 
+// Get seeded mock tests by subject
+exports.getSeededMockTestsBySubject = async (req, res) => {
+    try {
+        const { subjectId } = req.params;
+        
+        if (!subjectId) {
+            return res.status(400).json({ message: 'Subject ID is required' });
+        }
+        
+        // Find mock tests for this subject that are not AI-generated
+        const mockTests = await MockTest.find({ 
+            subjects: subjectId,
+            isGeneratedByAI: false
+        })
+        .populate('subjects', 'name')
+        .populate('createdBy', 'name')
+        .select('title description duration totalMarks testType difficulty')
+        .limit(30); // Limit to 30 mock tests per subject
+            
+        // Return the mock tests
+        res.status(200).json({ 
+            mockTests,
+            count: mockTests.length
+        });
+    } catch (error) {
+        console.error('Get seeded mock tests by subject error:', error);
+        res.status(500).json({ message: 'Server error while fetching seeded mock tests' });
+    }
+};
+
 // Get mock test by ID
 exports.getMockTestById = async (req, res) => {
     try {
+        console.log(`Fetching mock test with ID: ${req.params.id}`);
+        
         const mockTest = await MockTest.findById(req.params.id)
             .populate('subjects', 'name') // Changed from 'subject' to 'subjects' to match schema
             .populate('createdBy', 'name');
 
         if (!mockTest) {
+            console.error(`Mock test not found with ID: ${req.params.id}`);
             return res.status(404).json({ message: 'Mock test not found' });
+        }
+
+        console.log(`Found mock test: ${mockTest.title} with ${mockTest.sections?.length || 0} sections`);
+        if (mockTest.sections) {
+            mockTest.sections.forEach((section, index) => {
+                console.log(`Section ${index + 1}: ${section.title} has ${section.questions?.length || 0} questions`);
+            });
         }
 
         res.status(200).json({ mockTest });
     } catch (error) {
         console.error('Get mock test by ID error:', error);
         res.status(500).json({ message: 'Server error while fetching mock test' });
+    }
+};
+
+// Get mock tests by subject
+exports.getMockTestsBySubject = async (req, res) => {
+    try {
+        const subjectId = req.params.subjectId;
+        
+        if (!subjectId) {
+            return res.status(400).json({ message: 'Subject ID is required' });
+        }
+        
+        // Find mock tests that have this subject in their subjects array
+        const mockTests = await MockTest.find({ subjects: subjectId })
+            .populate('subjects', 'name')
+            .populate('createdBy', 'name')
+            .select('title description duration totalMarks testType');
+            
+        // If no mock tests found, we should return an empty array, not an error
+        res.status(200).json({ mockTests });
+    } catch (error) {
+        console.error('Get mock tests by subject error:', error);
+        res.status(500).json({ message: 'Server error while fetching mock tests by subject' });
     }
 };
 
@@ -193,8 +256,8 @@ exports.generateCustomMockTest = async (req, res) => {
                         `Option D for ${subject.name} question ${i + 1}`
                     ],
                     correctAnswer: Math.floor(Math.random() * 4), // Random correct answer
-                    marks: 1,
-                    negativeMarks: 0.25,
+                    marks: 3, // 3 marks per question
+                    negativeMarks: 1, // 1 mark negative marking
                     explanation: `This is the explanation for ${subject.name} question ${i + 1}`,
                     subject: subject.name,
                     difficulty: 'medium'
@@ -206,10 +269,14 @@ exports.generateCustomMockTest = async (req, res) => {
                 subjectRef: subject._id,
                 description: `Questions from ${subject.name}`,
                 questionsCount: questions.length,
-                totalMarks: questions.length,
+                totalMarks: questions.length * 3, // 3 marks per question
                 questions
             });
         }
+
+        // Calculate total duration based on number of questions (60 seconds per question)
+        const totalQuestions = sections.reduce((sum, section) => sum + section.questionsCount, 0);
+        const duration = totalQuestions * 60; // 60 seconds (1 minute) per question
 
         // Create the mock test
         const mockTest = new MockTest({
@@ -217,8 +284,9 @@ exports.generateCustomMockTest = async (req, res) => {
             description: `Custom mock test with ${subjectDocs.map(s => s.name).join(', ')}`,
             testType: 'custom',
             subjects,
-            duration: 1800, // 30 minutes
-            totalMarks: numberOfQuestions,
+            duration: duration, // 1 minute per question
+            totalMarks: totalQuestions * 3, // 3 marks per question
+            totalQuestions: totalQuestions, // Store the total questions count
             sections,
             isGeneratedByAI: false,
             difficulty: 'mixed',
