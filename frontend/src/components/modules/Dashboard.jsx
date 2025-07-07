@@ -90,7 +90,7 @@ const Dashboard = () => {
                 {stats.map((stat, index) => {
                     const Icon = stat.icon;
                     return (
-                        <AnimatedCard key={stat.title} delay={index * 100}>
+                        <AnimatedCard key={`stat-${stat.title}`} delay={index * 100}>
                             <div className="p-6">
                                 <div className="flex items-center justify-between mb-4">
                                     <div className={`p-3 rounded-lg ${stat.bgColor}`}>
@@ -108,7 +108,7 @@ const Dashboard = () => {
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 {/* Subject Progress */}
-                <AnimatedCard delay={400}>
+                <AnimatedCard delay={400} key="subject-progress">
                     <div className="p-6">
                         <div className="flex items-center justify-between mb-6">
                             <h2 className="text-xl font-bold text-gray-800">Subject Progress</h2>
@@ -122,7 +122,7 @@ const Dashboard = () => {
 
                         <div className="space-y-4">
                             {state.subjects.slice(0, 4).map((subject, index) => (
-                                <div key={subject.id} className="space-y-2">
+                                <div key={subject._id || `subject-${index}`} className="space-y-2">
                                     <div className="flex items-center justify-between">
                                         <div className="flex items-center space-x-3">
                                             <div className={`w-3 h-3 rounded-full ${subject.color}`}></div>
@@ -138,13 +138,13 @@ const Dashboard = () => {
                 </AnimatedCard>
 
                 {/* Recent Activity */}
-                <AnimatedCard delay={500}>
+                <AnimatedCard delay={500} key="recent-activity">
                     <div className="p-6">
                         <h2 className="text-xl font-bold text-gray-800 mb-6">Recent Activity</h2>
 
                         <div className="space-y-4">
                             {recentActivities.map((activity, index) => (
-                                <div key={activity.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                                <div key={`activity-${activity.id || index}`} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
                                     <div>
                                         <p className="font-medium text-gray-800">{activity.activity}</p>
                                         <p className="text-sm text-gray-500">{activity.time}</p>
@@ -164,7 +164,7 @@ const Dashboard = () => {
 
             {/* Quick Actions */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <AnimatedCard delay={600} onClick={() => dispatch({ type: 'SET_ACTIVE_MODULE', payload: 'quizzes' })}>
+                <AnimatedCard delay={600} onClick={() => dispatch({ type: 'SET_ACTIVE_MODULE', payload: 'quizzes' })} key="quick-action-quiz">
                     <div className="p-6 text-center">
                         <Brain className="w-12 h-12 text-blue-600 mx-auto mb-4" />
                         <h3 className="text-lg font-bold text-gray-800 mb-2">Take a Quiz</h3>
@@ -172,7 +172,7 @@ const Dashboard = () => {
                     </div>
                 </AnimatedCard>
 
-                <AnimatedCard delay={700} onClick={() => dispatch({ type: 'SET_ACTIVE_MODULE', payload: 'mock-tests' })}>
+                <AnimatedCard delay={700} onClick={() => dispatch({ type: 'SET_ACTIVE_MODULE', payload: 'mock-tests' })} key="quick-action-mock">
                     <div className="p-6 text-center">
                         <Target className="w-12 h-12 text-green-600 mx-auto mb-4" />
                         <h3 className="text-lg font-bold text-gray-800 mb-2">Mock Test</h3>
@@ -180,7 +180,7 @@ const Dashboard = () => {
                     </div>
                 </AnimatedCard>
 
-                <AnimatedCard delay={800} onClick={() => dispatch({ type: 'SET_ACTIVE_MODULE', payload: 'subjects' })}>
+                <AnimatedCard delay={800} onClick={() => dispatch({ type: 'SET_ACTIVE_MODULE', payload: 'subjects' })} key="quick-action-study">
                     <div className="p-6 text-center">
                         <BookOpen className="w-12 h-12 text-purple-600 mx-auto mb-4" />
                         <h3 className="text-lg font-bold text-gray-800 mb-2">Study Topics</h3>
