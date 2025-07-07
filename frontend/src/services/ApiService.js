@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const API_URL = 'http://localhost:5000/api';
+const API_URL = 'http://localhost:3000/api';
 
 // Create axios instance with default config
 const api = axios.create({
@@ -167,6 +167,24 @@ export const getMockTestById = async (id) => {
   try {
     const response = await api.get(`/mock-test/${id}`);
     return response.data.mockTest;
+  } catch (error) {
+    throw error.response?.data || error.message;
+  }
+};
+
+export const getMockTestsBySubject = async (subjectId) => {
+  try {
+    const response = await api.get(`/mock-test/by-subject/${subjectId}`);
+    return response.data.mockTests;
+  } catch (error) {
+    throw error.response?.data || error.message;
+  }
+};
+
+export const getSeededMockTestsBySubject = async (subjectId) => {
+  try {
+    const response = await api.get(`/mock-test/seeded-by-subject/${subjectId}`);
+    return response.data.mockTests;
   } catch (error) {
     throw error.response?.data || error.message;
   }
