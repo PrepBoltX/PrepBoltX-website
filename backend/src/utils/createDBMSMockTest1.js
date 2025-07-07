@@ -31,9 +31,10 @@ const findOrCreateDBMSMockTest = async () => {
         description: 'Mock test on Database Management Systems with a mix of conceptual and practical MCQs.',
         testType: 'subject',
         subjects: [dbmsSubject._id],
-        duration: 1800, // 30 minutes
-        totalMarks: 34,
-        passingMarks: 12,
+        duration: 1800, // 30 minutes (30 questions × 1 minute per question)
+        totalMarks: 90, // 30 questions × 3 marks per question
+        totalQuestions: 30,
+        passingMarks: 40,
         sections: [],
         difficulty: 'medium',
         featured: true
@@ -43,7 +44,13 @@ const findOrCreateDBMSMockTest = async () => {
       await dbmsSubject.save();
       console.log('Created new DBMS mock test');
     } else {
-      console.log('Found existing DBMS mock test. Adding questions to it...');
+      console.log('Found existing DBMS mock test. Updating configuration...');
+      // Update existing mock test to match our requirements
+      mockTest.duration = 1800; // 30 minutes
+      mockTest.totalMarks = 90; // 30 questions × 3 marks per question
+      mockTest.totalQuestions = 30;
+      await mockTest.save();
+      console.log('Updated DBMS mock test configuration');
     }
     return { mockTest, dbmsSubject };
   } catch (error) {
@@ -63,8 +70,8 @@ const dbmsMockTestQuestions = [
     ],
     correctAnswer: 2,
     explanation: 'DBMS stands for Database Management System, which is software for managing databases.',
-    marks: 2,
-    negativeMarks: 0.5,
+    marks: 3,
+    negativeMarks: 1,
     subject: 'DBMS',
     difficulty: 'easy'
   },
@@ -78,8 +85,8 @@ const dbmsMockTestQuestions = [
     ],
     correctAnswer: 3,
     explanation: 'All listed options are types of DBMS models: Relational, Network, and Hierarchical.',
-    marks: 2,
-    negativeMarks: 0.5,
+    marks: 3,
+    negativeMarks: 1,
     subject: 'DBMS',
     difficulty: 'easy'
   },
@@ -93,8 +100,8 @@ const dbmsMockTestQuestions = [
     ],
     correctAnswer: 2,
     explanation: 'Database Table is a data structure, not a DBMS component. The others are core DBMS components.',
-    marks: 2,
-    negativeMarks: 0.5,
+    marks: 3,
+    negativeMarks: 1,
     subject: 'DBMS',
     difficulty: 'medium'
   },
@@ -108,8 +115,8 @@ const dbmsMockTestQuestions = [
     ],
     correctAnswer: 3,
     explanation: 'Tables, views, and queries are all used to organize and interact with data in a DBMS.',
-    marks: 2,
-    negativeMarks: 0.5,
+    marks: 3,
+    negativeMarks: 1,
     subject: 'DBMS',
     difficulty: 'easy'
   },
@@ -123,8 +130,8 @@ const dbmsMockTestQuestions = [
     ],
     correctAnswer: 2,
     explanation: 'The Hierarchical Model uses a tree structure for data relationships.',
-    marks: 2,
-    negativeMarks: 0.5,
+    marks: 3,
+    negativeMarks: 1,
     subject: 'DBMS',
     difficulty: 'medium'
   },
@@ -138,8 +145,8 @@ const dbmsMockTestQuestions = [
     ],
     correctAnswer: 0,
     explanation: 'SELECT is used to retrieve data from a database.',
-    marks: 2,
-    negativeMarks: 0.5,
+    marks: 3,
+    negativeMarks: 1,
     subject: 'DBMS',
     difficulty: 'easy'
   },
@@ -153,8 +160,8 @@ const dbmsMockTestQuestions = [
     ],
     correctAnswer: 0,
     explanation: 'Normalization helps avoid redundancy and update anomalies in relational databases.',
-    marks: 2,
-    negativeMarks: 0.5,
+    marks: 3,
+    negativeMarks: 1,
     subject: 'DBMS',
     difficulty: 'medium'
   },
@@ -168,8 +175,8 @@ const dbmsMockTestQuestions = [
     ],
     correctAnswer: 3,
     explanation: 'A primary key uniquely identifies records, enforces relationships, and prevents duplication.',
-    marks: 2,
-    negativeMarks: 0.5,
+    marks: 3,
+    negativeMarks: 1,
     subject: 'DBMS',
     difficulty: 'easy'
   },
@@ -183,8 +190,8 @@ const dbmsMockTestQuestions = [
     ],
     correctAnswer: 3,
     explanation: 'Many-to-One is not a standard relationship type; the standard types are One-to-One, One-to-Many, and Many-to-Many.',
-    marks: 2,
-    negativeMarks: 0.5,
+    marks: 3,
+    negativeMarks: 1,
     subject: 'DBMS',
     difficulty: 'medium'
   },
@@ -198,8 +205,8 @@ const dbmsMockTestQuestions = [
     ],
     correctAnswer: 1,
     explanation: 'DROP is used to remove a table from a database.',
-    marks: 2,
-    negativeMarks: 0.5,
+    marks: 3,
+    negativeMarks: 1,
     subject: 'DBMS',
     difficulty: 'easy'
   },
@@ -213,8 +220,8 @@ const dbmsMockTestQuestions = [
     ],
     correctAnswer: 1,
     explanation: 'Transaction Control ensures that transactions are completed successfully or rolled back.',
-    marks: 2,
-    negativeMarks: 0.5,
+    marks: 3,
+    negativeMarks: 1,
     subject: 'DBMS',
     difficulty: 'medium'
   },
@@ -228,8 +235,8 @@ const dbmsMockTestQuestions = [
     ],
     correctAnswer: 3,
     explanation: 'Primary Key, Foreign Key, and Check are all types of constraints in DBMS.',
-    marks: 2,
-    negativeMarks: 0.5,
+    marks: 3,
+    negativeMarks: 1,
     subject: 'DBMS',
     difficulty: 'easy'
   },
@@ -243,8 +250,8 @@ const dbmsMockTestQuestions = [
     ],
     correctAnswer: 0,
     explanation: 'SQL stands for Structured Query Language.',
-    marks: 2,
-    negativeMarks: 0.5,
+    marks: 3,
+    negativeMarks: 1,
     subject: 'DBMS',
     difficulty: 'easy'
   },
