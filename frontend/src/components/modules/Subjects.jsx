@@ -31,9 +31,9 @@ const Subjects = () => {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {state.subjects.map((subject, index) => (
                     <AnimatedCard
-                        key={subject.id}
+                        key={subject._id}
                         delay={index * 100}
-                        onClick={() => handleSubjectClick(subject.id)}
+                        onClick={() => handleSubjectClick(subject._id)}
                     >
                         <div className="p-6">
                             <div className="flex items-center justify-between mb-4">
