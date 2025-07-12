@@ -106,17 +106,19 @@ const userSchema = new mongoose.Schema({
     }],
     mockTestAttempts: [{
         testId: {
-            type: mongoose.Schema.Types.ObjectId,
+            type: mongoose.Schema.Types.Mixed, // Changed from ObjectId to Mixed to support both ObjectId and String
             ref: 'MockTest'
         },
         score: Number,
+        totalScore: Number, // Added to match what's being saved in the controller
         totalQuestions: Number,
         correctAnswers: Number,
         timeTaken: Number,
         sectionWiseScores: [{
             section: String,
             score: Number,
-            totalQuestions: Number
+            totalQuestions: Number,
+            correctAnswers: Number // Added to match what's being saved in the controller
         }],
         completed: Boolean,
         date: {
