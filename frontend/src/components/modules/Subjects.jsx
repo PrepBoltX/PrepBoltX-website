@@ -31,9 +31,9 @@ const Subjects = () => {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {state.subjects.map((subject, index) => (
                     <AnimatedCard
-                        key={subject._id}
+                        key={subject.id || `subject-${index}`}
                         delay={index * 100}
-                        onClick={() => handleSubjectClick(subject._id)}
+                        onClick={() => handleSubjectClick(subject.id)}
                     >
                         <div className="p-6">
                             <div className="flex items-center justify-between mb-4">
@@ -91,14 +91,14 @@ const Subjects = () => {
 
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                     {[
-                        { title: 'Notes', description: 'Comprehensive study notes', icon: BookOpen, color: 'bg-blue-500' },
-                        { title: 'Flashcards', description: 'Quick revision cards', icon: CheckCircle, color: 'bg-green-500' },
-                        { title: 'Practice Questions', description: 'Topic-wise questions', icon: ArrowRight, color: 'bg-purple-500' },
-                        { title: 'Video Lectures', description: 'Expert explanations', icon: Clock, color: 'bg-orange-500' }
-                    ].map((resource, index) => {
+                        { id: 'notes', title: 'Notes', description: 'Comprehensive study notes', icon: BookOpen, color: 'bg-blue-500' },
+                        { id: 'flashcards', title: 'Flashcards', description: 'Quick revision cards', icon: CheckCircle, color: 'bg-green-500' },
+                        { id: 'practice', title: 'Practice Questions', description: 'Topic-wise questions', icon: ArrowRight, color: 'bg-purple-500' },
+                        { id: 'videos', title: 'Video Lectures', description: 'Expert explanations', icon: Clock, color: 'bg-orange-500' }
+                    ].map((resource) => {
                         const Icon = resource.icon;
                         return (
-                            <AnimatedCard key={resource.title} delay={600 + index * 100}>
+                            <AnimatedCard key={resource.id} delay={600 + parseInt(resource.id.charCodeAt(0)) * 10}>
                                 <div className="p-6 text-center">
                                     <div className={`w-12 h-12 ${resource.color} rounded-lg flex items-center justify-center mx-auto mb-4`}>
                                         <Icon className="w-6 h-6 text-white" />
