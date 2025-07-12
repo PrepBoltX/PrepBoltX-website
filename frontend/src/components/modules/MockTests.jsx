@@ -7,7 +7,8 @@ import { getAllMockTests, getMockTestById, generateCustomMockTest, submitMockTes
 // Constants for standardized tests
 const TEST_DURATION = 1800; // 30 minutes in seconds
 const QUESTIONS_PER_TEST = 30;
-const MARKS_PER_QUESTION = 4;
+const MARKS_PER_QUESTION = 4; // Always 4 marks per question
+const NEGATIVE_MARKS = 1; // Always -1 for negative marking
 const TOTAL_MARKS = QUESTIONS_PER_TEST * MARKS_PER_QUESTION; // 120 marks
 const TIME_PER_QUESTION = 60; // 60 seconds (1 minute) per question
 
@@ -82,22 +83,34 @@ const MockTests = () => {
         const questionId = question._id || index;
         const userAnswer = answers[questionId];
         
-        if (userAnswer !== undefined) {
+        if (userAnswer !== undefined && userAnswer !== null) {
           attempted++;
           
+          // Always use standardized marking: +4 for correct, -1 for wrong
           if (userAnswer === question.correctAnswer) {
             // Award marks for correct answer
             totalScore += MARKS_PER_QUESTION;
             correct++;
           } else {
             // Deduct marks for incorrect answer
-            totalScore -= 1; // Standard 1 mark negative marking
+            totalScore -= NEGATIVE_MARKS;
           }
         }
       });
       
+      // Calculate total possible marks
       const totalPossibleMarks = testQuestions.length * MARKS_PER_QUESTION;
-      const percentage = (totalScore / totalPossibleMarks) * 100;
+      
+      // Calculate percentage (ensure it's not negative)
+      const percentage = Math.max(0, (totalScore / totalPossibleMarks) * 100);
+      
+      console.log('Score calculation:', {
+        totalScore,
+        attempted,
+        correct,
+        total: testQuestions.length,
+        percentage: percentage.toFixed(2)
+      });
       
       return {
         score: totalScore,
@@ -120,26 +133,38 @@ const MockTests = () => {
     try {
       setLoading(true);
       
-      // Format answers by section
+      // Format answers by section index
       const sectionAnswers = {};
       
       // Ensure we're only using the current test questions (limited to 30)
       const currentTestQuestions = testQuestions.slice(0, QUESTIONS_PER_TEST);
       
+      // First, organize questions by section index
       currentTestQuestions.forEach((question, index) => {
-        const sectionTitle = question.sectionTitle || 'General';
-        if (!sectionAnswers[sectionTitle]) {
-          sectionAnswers[sectionTitle] = [];
+        const sectionIndex = question.sectionIndex || 0;
+        const questionId = question._id || index;
+        
+        if (!sectionAnswers[sectionIndex]) {
+          sectionAnswers[sectionIndex] = [];
         }
-        sectionAnswers[sectionTitle].push(
-          selectedAnswers[question._id || index]
-        );
+        
+        // Add the user's answer for this question to the appropriate section
+        sectionAnswers[sectionIndex].push(selectedAnswers[questionId]);
       });
+      
+      // Convert the sectionAnswers object to an array format expected by the backend
+      const formattedAnswers = [];
+      Object.keys(sectionAnswers).forEach(sectionIndex => {
+        formattedAnswers[parseInt(sectionIndex)] = sectionAnswers[sectionIndex];
+      });
+      
+      console.log('Formatted answers for submission:', formattedAnswers);
       
       let result;
       
       // Calculate results using our standardized function
       const scoreData = calculateCurrentScore(selectedAnswers);
+      console.log('Score data calculated:', scoreData);
       
       // Group questions by section for the results
       const sectionResults = {};
@@ -149,15 +174,16 @@ const MockTests = () => {
           sectionResults[sectionTitle] = [];
         }
         
-        const userAnswer = selectedAnswers[question._id || index];
+        const questionId = question._id || index;
+        const userAnswer = selectedAnswers[questionId];
         const isCorrect = userAnswer === question.correctAnswer;
         
-        // Calculate score for this question
+        // Calculate score for this question using standardized marking
         let questionScore = 0;
         if (isCorrect) {
-          questionScore = MARKS_PER_QUESTION;
+          questionScore = MARKS_PER_QUESTION; // Always +4 for correct
         } else if (userAnswer !== undefined) {
-          questionScore = -1; // Standard 1 mark negative marking
+          questionScore = -NEGATIVE_MARKS; // Always -1 for wrong
         }
         
         sectionResults[sectionTitle].push({
@@ -178,42 +204,136 @@ const MockTests = () => {
         questions
       }));
       
-      // Check if this is a default mock test
-      if (activeMockTest?._id && activeMockTest._id.startsWith('default-')) {
+      // Calculate time taken as the difference between the standard time limit and remaining time
+      const timeTaken = TEST_DURATION - remainingTime;
+      
+      // Extract subject information from the test questions for section-wise tracking
+      const subjectData = {};
+      testQuestions.forEach(question => {
+        if (question.subjectId && question.subjectName) {
+          if (!subjectData[question.subjectId]) {
+            subjectData[question.subjectId] = {
+              name: question.subjectName,
+              total: 0,
+              correct: 0
+            };
+          }
+          
+          const questionId = question._id || question.id;
+          const userAnswer = selectedAnswers[questionId];
+          const isCorrect = userAnswer === question.correctAnswer;
+          
+          subjectData[question.subjectId].total++;
+          if (isCorrect) {
+            subjectData[question.subjectId].correct++;
+          }
+        }
+      });
+      
+      // Convert to section-wise scores format
+      const sectionWiseScores = Object.keys(subjectData).map(subjectId => ({
+        section: subjectData[subjectId].name,
+        score: subjectData[subjectId].correct * MARKS_PER_QUESTION - (subjectData[subjectId].total - subjectData[subjectId].correct) * NEGATIVE_MARKS,
+        totalQuestions: subjectData[subjectId].total,
+        correctAnswers: subjectData[subjectId].correct,
+        subjectId: subjectId // Add subject ID for tracking
+      }));
+      
+      // Check if this is a custom test or default mock test
+      const isCustomTest = activeMockTest?._id && (activeMockTest._id.startsWith('custom-') || activeMockTest._id.startsWith('default-'));
+      
+      if (isCustomTest) {
         result = {
           message: 'Mock test submitted successfully',
           score: scoreData.score,
           percentage: scoreData.percentage,
-          results: resultsArray
+          correctAnswers: scoreData.correct,
+          totalQuestions: scoreData.total,
+          results: resultsArray,
+          sectionWiseScores: sectionWiseScores // Add section-wise scores to result
         };
         
         // Update app context with new test completion
         dispatch({
           type: 'UPDATE_USER_PROGRESS',
-          payload: { mockTestCompleted: activeMockTest._id }
+          payload: { 
+            mockTestCompleted: activeMockTest._id,
+            mockTestResult: {
+              testId: activeMockTest._id,
+              score: scoreData.percentage,
+              correctAnswers: scoreData.correct,
+              totalQuestions: scoreData.total,
+              timeTaken: timeTaken,
+              completed: true,
+              results: resultsArray, // Include full results
+              sectionWiseScores: sectionWiseScores // Add section-wise scores
+            }
+          }
         });
       } else {
-        // For backend tests, still use the API but update the local result with our calculated data
-        const apiResult = await submitMockTestAttempt(
-          activeMockTest._id,
-          sectionAnswers
-        );
+        // For backend tests, send the data to the API
+        console.log('Submitting to backend with score data:', scoreData);
         
-        // Use our local calculation for consistency
-        result = {
-          message: apiResult.message || 'Mock test submitted successfully',
-          score: scoreData.score,
-          percentage: scoreData.percentage,
-          results: resultsArray
-        };
+        try {
+          const apiResult = await submitMockTestAttempt(
+            activeMockTest._id,
+            formattedAnswers,
+            timeTaken, // Pass the time taken to complete the test
+            {
+              score: scoreData.score,
+              percentage: scoreData.percentage,
+              correctAnswers: scoreData.correct,
+              totalQuestions: scoreData.total,
+              sectionWiseScores: sectionWiseScores // Add section-wise scores
+            }
+          );
+          
+          console.log('API result:', apiResult);
+          
+          // Use the API result but fallback to our local calculation for consistency
+          result = {
+            message: apiResult.message || 'Mock test submitted successfully',
+            score: apiResult.score || scoreData.score,
+            percentage: apiResult.percentage || scoreData.percentage,
+            correctAnswers: apiResult.correctAnswers || scoreData.correct,
+            totalQuestions: apiResult.totalQuestions || scoreData.total,
+            results: apiResult.results || resultsArray,
+            sectionWiseScores: sectionWiseScores // Add section-wise scores to result
+          };
+        } catch (apiError) {
+          console.error('API error, using local results:', apiError);
+          // If API call fails, use our local calculation
+          result = {
+            message: 'Mock test submitted successfully',
+            score: scoreData.score,
+            percentage: scoreData.percentage,
+            correctAnswers: scoreData.correct,
+            totalQuestions: scoreData.total,
+            results: resultsArray,
+            sectionWiseScores: sectionWiseScores // Add section-wise scores to result
+          };
+        }
         
         // Update app context with new test completion
         dispatch({
           type: 'UPDATE_USER_PROGRESS',
-          payload: { mockTestCompleted: activeMockTest._id }
+          payload: { 
+            mockTestCompleted: activeMockTest._id,
+            mockTestResult: {
+              testId: activeMockTest._id,
+              score: result.percentage,
+              correctAnswers: result.correctAnswers,
+              totalQuestions: result.totalQuestions,
+              timeTaken: timeTaken,
+              completed: true,
+              results: result.results, // Include full results
+              sectionWiseScores: sectionWiseScores // Add section-wise scores
+            }
+          }
         });
       }
       
+      console.log('Setting test results:', result);
       setTestResults(result);
       setTestCompleted(true);
       setLoading(false);
@@ -222,7 +342,7 @@ const MockTests = () => {
       setError('Failed to submit mock test. Please try again later.');
       setLoading(false);
     }
-  }, [testQuestions, selectedAnswers, activeMockTest, dispatch, calculateCurrentScore]);
+  }, [testQuestions, selectedAnswers, activeMockTest, dispatch, calculateCurrentScore, remainingTime]);
 
   // Timer effect
   useEffect(() => {
@@ -259,7 +379,7 @@ const MockTests = () => {
         }
       };
     }
-  }, [timerActive, remainingTime, finishTest]);
+  }, [timerActive, finishTest]);
 
   // Clean up timer on unmount
   useEffect(() => {
@@ -336,19 +456,170 @@ const MockTests = () => {
           return;
         }
         
-        // Instead of generating, fetch seeded tests for the first selected subject
-        const subjectId = selectedSubjects[0]; // For simplicity, use the first subject
-        const seededTests = await getSeededMockTestsBySubject(subjectId);
+        // For custom tests, we need to fetch tests for all selected subjects
+        const subjectNames = [];
+        const subjectQuestions = {}; // Store questions by subject ID
         
-        if (!seededTests || seededTests.length === 0) {
-          setError(`No seeded mock tests found for the selected subject`);
+        // Calculate exactly how many questions we need from each subject
+        const questionsPerSubject = Math.floor(QUESTIONS_PER_TEST / selectedSubjects.length);
+        // Handle remainder if division isn't even
+        const remainder = QUESTIONS_PER_TEST % selectedSubjects.length;
+        
+        console.log(`Distributing ${QUESTIONS_PER_TEST} questions across ${selectedSubjects.length} subjects (${questionsPerSubject} per subject, with ${remainder} extra)`);
+        
+        // Fetch tests for each selected subject
+        for (const [index, subjectId] of selectedSubjects.entries()) {
+          try {
+            // Find the subject name for display
+            const subject = state.subjects.find(s => s._id === subjectId);
+            if (subject) {
+              subjectNames.push(subject.name);
+            }
+            
+            // Fetch mock tests for this subject
+            const subjectTests = await getMockTestsBySubject(subjectId);
+            
+            if (!subjectTests || subjectTests.length === 0) {
+              console.log(`No tests found for subject ID: ${subjectId}`);
+              
+              // Try getting seeded tests as fallback
+              const seededTests = await getSeededMockTestsBySubject(subjectId);
+              if (!seededTests || seededTests.length === 0) {
+                console.log(`No seeded tests found for subject ID: ${subjectId} either`);
+                continue;
+              }
+              
+              // Use seeded tests if available
+              const randomTest = seededTests[Math.floor(Math.random() * seededTests.length)];
+              const subjectTest = await getMockTestById(randomTest._id);
+              
+              if (!subjectTest || !subjectTest.sections) {
+                console.log(`Invalid test structure for subject ID: ${subjectId}`);
+                continue;
+              }
+              
+              // Extract questions from this subject's test
+              const allSubjectQuestions = [];
+              subjectTest.sections.forEach((section, sectionIndex) => {
+                if (section.questions && section.questions.length > 0) {
+                  section.questions.forEach(question => {
+                    allSubjectQuestions.push({
+                      ...question,
+                      sectionTitle: section.title || subject?.name || `Subject ${subjectId}`,
+                      sectionIndex: sectionIndex,
+                      subjectId: subjectId,
+                      subjectName: subject?.name || `Subject ${subjectId}`,
+                      marks: MARKS_PER_QUESTION,
+                      negativeMarks: NEGATIVE_MARKS
+                    });
+                  });
+                }
+              });
+              
+              // Shuffle questions from this subject
+              const shuffledSubjectQuestions = shuffleArray(allSubjectQuestions);
+              
+              // Calculate how many questions to take from this subject
+              const questionsToTake = questionsPerSubject + (index < remainder ? 1 : 0);
+              
+              // Store questions for this subject
+              subjectQuestions[subjectId] = shuffledSubjectQuestions.slice(0, questionsToTake);
+              
+              console.log(`Added ${Math.min(shuffledSubjectQuestions.length, questionsToTake)} questions from ${subject?.name || subjectId} (seeded test)`);
+              continue;
+            }
+            
+            // Select a random test from the available tests for this subject
+            const randomTest = subjectTests[Math.floor(Math.random() * subjectTests.length)];
+            const subjectTest = await getMockTestById(randomTest._id);
+            
+            if (!subjectTest || !subjectTest.sections) {
+              console.log(`Invalid test structure for subject ID: ${subjectId}`);
+              continue;
+            }
+            
+            console.log(`Found test: ${subjectTest.title} with ${subjectTest.sections.length} sections`);
+            
+            // Extract questions from this subject's test
+            const allSubjectQuestions = [];
+            subjectTest.sections.forEach((section, sectionIndex) => {
+              if (section.questions && section.questions.length > 0) {
+                console.log(`Section ${sectionIndex}: ${section.title} has ${section.questions.length} questions`);
+                section.questions.forEach(question => {
+                  allSubjectQuestions.push({
+                    ...question,
+                    sectionTitle: section.title || subject?.name || `Subject ${subjectId}`,
+                    sectionIndex: sectionIndex,
+                    subjectId: subjectId,
+                    subjectName: subject?.name || `Subject ${subjectId}`,
+                    marks: MARKS_PER_QUESTION,
+                    negativeMarks: NEGATIVE_MARKS
+                  });
+                });
+              } else {
+                console.log(`Section ${sectionIndex} has no questions or is invalid`);
+              }
+            });
+            
+            if (allSubjectQuestions.length === 0) {
+              console.log(`No questions found in test for subject ID: ${subjectId}`);
+              continue;
+            }
+            
+            // Shuffle questions from this subject
+            const shuffledSubjectQuestions = shuffleArray(allSubjectQuestions);
+            
+            // Calculate how many questions to take from this subject
+            // Add one extra question to subjects at the beginning if there's a remainder
+            const questionsToTake = questionsPerSubject + (index < remainder ? 1 : 0);
+            
+            // Store questions for this subject
+            subjectQuestions[subjectId] = shuffledSubjectQuestions.slice(0, questionsToTake);
+            
+            console.log(`Added ${Math.min(shuffledSubjectQuestions.length, questionsToTake)} questions from ${subject?.name || subjectId}`);
+            
+          } catch (err) {
+            console.error(`Error fetching test for subject ID ${subjectId}:`, err);
+            // Continue with other subjects if one fails
+          }
+        }
+        
+        // Combine all questions from all subjects
+        const allQuestions = [];
+        for (const subjectId of selectedSubjects) {
+          if (subjectQuestions[subjectId] && subjectQuestions[subjectId].length > 0) {
+            allQuestions.push(...subjectQuestions[subjectId]);
+          }
+        }
+        
+        if (allQuestions.length === 0) {
+          setError('Could not find any questions for the selected subjects');
           setLoading(false);
           return;
         }
         
-        // Select a random test from the seeded tests
-        const randomTest = seededTests[Math.floor(Math.random() * seededTests.length)];
-        test = await getMockTestById(randomTest._id);
+        // Shuffle all questions to randomize the order across subjects
+        const shuffledQuestions = shuffleArray(allQuestions);
+        
+        // Create a custom test with the collected questions
+        test = {
+          _id: `custom-${Date.now()}`,
+          title: `Custom Test: ${subjectNames.join(', ')}`,
+          description: `Custom mock test with questions from ${subjectNames.join(', ')}`,
+          testType: 'custom',
+          subjects: selectedSubjects,
+          duration: TEST_DURATION,
+          totalMarks: TOTAL_MARKS,
+          sections: []
+        };
+        
+        // Create one section for all questions (they're already mixed)
+        test.sections.push({
+          title: "Mixed Subjects",
+          questions: shuffledQuestions
+        });
+        
+        console.log(`Created custom test with ${shuffledQuestions.length} questions from ${selectedSubjects.length} subjects`);
         
       } else if (selectedMode === 'subject') {
         // Fetch the selected mock test directly
@@ -390,28 +661,38 @@ const MockTests = () => {
       // Prepare flat list of questions from all sections
       const allQuestions = [];
       
-      test.sections.forEach(section => {
+      test.sections.forEach((section, sectionIndex) => {
+        if (!section.questions) return;
+        
         section.questions.forEach(question => {
           allQuestions.push({
             ...question,
             sectionTitle: section.title,
+            sectionIndex: sectionIndex, // Add section index to each question
             marks: MARKS_PER_QUESTION, // Standardized marks per question
-            negativeMarks: 1 // Standardized negative marking
+            negativeMarks: NEGATIVE_MARKS // Standardized negative marking
           });
         });
       });
       
-      // Limit to exactly 30 questions
-      let finalQuestions = allQuestions;
-      if (allQuestions.length > QUESTIONS_PER_TEST) {
+      // For non-custom tests, select exactly 30 random questions
+      let finalQuestions;
+      if (selectedMode === 'custom') {
+        // For custom tests, we've already prepared the questions with exact distribution
+        finalQuestions = allQuestions;
+      } else if (allQuestions.length > QUESTIONS_PER_TEST) {
+        // Shuffle the array and take the first 30 questions
         finalQuestions = shuffleArray(allQuestions).slice(0, QUESTIONS_PER_TEST);
       } else if (allQuestions.length < QUESTIONS_PER_TEST) {
-        // If less than 30 questions, duplicate some randomly
+        // If less than 30 questions, duplicate some randomly to reach exactly 30
         finalQuestions = [...allQuestions];
         while (finalQuestions.length < QUESTIONS_PER_TEST) {
           const randomQuestion = allQuestions[Math.floor(Math.random() * allQuestions.length)];
           finalQuestions.push({...randomQuestion});
         }
+      } else {
+        // If exactly 30 questions, shuffle them
+        finalQuestions = shuffleArray(allQuestions);
       }
       
       // Create standardized test with consistent parameters
@@ -430,7 +711,7 @@ const MockTests = () => {
       setTestCompleted(false);
       setTestResults(null);
       
-      // Set up the timer
+      // Set up the timer with standard time limit
       setRemainingTime(TEST_DURATION);
       
       // Clear any existing timer
@@ -439,6 +720,7 @@ const MockTests = () => {
       }
       
       // Start the timer
+      startTimeRef.current = Date.now();
       setTimerActive(true);
       
       setLoading(false);
@@ -1017,8 +1299,55 @@ const MockTests = () => {
 
   // Show test results if completed
   if (testCompleted && testResults) {
+    console.log('Rendering test results:', testResults);
     const score = testResults.percentage;
     const feedbackData = generateFeedback(score);
+    
+    // Generate question breakdown for custom tests if results are missing
+    let resultsToDisplay = testResults.results;
+    if (!resultsToDisplay || resultsToDisplay.length === 0) {
+      console.log('No results found in testResults, generating from test questions and answers');
+      
+      // Group questions by section for the results
+      const sectionResults = {};
+      testQuestions.forEach((question, index) => {
+        const sectionTitle = question.sectionTitle || 'General';
+        if (!sectionResults[sectionTitle]) {
+          sectionResults[sectionTitle] = [];
+        }
+        
+        const questionId = question._id || index;
+        const userAnswer = selectedAnswers[questionId];
+        const isCorrect = userAnswer === question.correctAnswer;
+        
+        // Calculate score for this question using standardized marking
+        let questionScore = 0;
+        if (isCorrect) {
+          questionScore = MARKS_PER_QUESTION; // Always +4 for correct
+        } else if (userAnswer !== undefined) {
+          questionScore = -NEGATIVE_MARKS; // Always -1 for wrong
+        }
+        
+        sectionResults[sectionTitle].push({
+          question: question.question,
+          userAnswer,
+          correctAnswer: question.correctAnswer,
+          isCorrect,
+          score: questionScore,
+          explanation: question.explanation,
+          subject: question.subject,
+          options: question.options // Include options for review
+        });
+      });
+      
+      // Convert sections to array format for consistency
+      resultsToDisplay = Object.entries(sectionResults).map(([sectionTitle, questions]) => ({
+        sectionTitle,
+        questions
+      }));
+      
+      console.log('Generated results:', resultsToDisplay);
+    }
     
     return (
       <div className="max-w-3xl mx-auto p-6">
@@ -1046,69 +1375,104 @@ const MockTests = () => {
             </div>
           </div>
           
-          <div className="mt-8">
-            <h3 className="text-xl font-medium mb-4 text-gray-800">Question Breakdown</h3>
-            {testResults.results.map((section, sectionIndex) => (
-              <div key={sectionIndex} className="mb-6">
-                <h4 className="font-medium text-lg mb-3 text-gray-800">{section.sectionTitle}</h4>
-                
-                {section.questions.map((result, questionIndex) => {
-                  const questionNumber = sectionIndex * section.questions.length + questionIndex + 1;
-                  const isCorrect = result.isCorrect;
-                  
-                  return (
-                    <div 
-                      key={questionIndex} 
-                      className={`mb-4 p-4 rounded-md ${
-                        isCorrect ? 'bg-green-50 border border-green-200' : 'bg-red-50 border border-red-200'
-                      }`}
-                    >
-                      <p className="font-medium text-gray-800">{questionNumber}. {result.question}</p>
-                      
-                      <div className="mt-3 ml-1 space-y-1">
-                        {result.options && result.options.map((option, optionIndex) => (
-                          <div key={optionIndex} className={`flex items-center p-2 rounded ${
-                            result.correctAnswer === optionIndex ? 'bg-green-100' :
-                            result.userAnswer === optionIndex ? (result.correctAnswer !== optionIndex ? 'bg-red-100' : 'bg-green-100') : 'bg-gray-50 border border-gray-200'
-                          }`}>
-                            <div className={`w-6 h-6 rounded-full flex items-center justify-center mr-2 ${
-                              result.correctAnswer === optionIndex ? 'bg-green-500 text-white' :
-                              result.userAnswer === optionIndex ? (result.correctAnswer !== optionIndex ? 'bg-red-500 text-white' : 'bg-green-500 text-white') : 'bg-gray-300 text-gray-700'
-                            }`}>
-                              {String.fromCharCode(65 + optionIndex)}
-                            </div>
-                            <span className={`${
-                              result.correctAnswer === optionIndex ? 'text-green-800 font-medium' :
-                              result.userAnswer === optionIndex ? (result.correctAnswer !== optionIndex ? 'text-red-800' : 'text-green-800 font-medium') : 'text-gray-700'
-                            }`}>{option}</span>
-                            
-                            {result.correctAnswer === optionIndex && (
-                              <span className="ml-2 text-green-700 text-sm font-medium">(Correct Answer)</span>
-                            )}
-                            {result.userAnswer === optionIndex && result.userAnswer !== result.correctAnswer && (
-                              <span className="ml-2 text-red-700 text-sm font-medium">(Your Answer)</span>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                      
-                      {result.explanation && (
-                        <p className="mt-3 text-gray-700 bg-gray-50 p-2 rounded">
-                          <span className="font-medium">Explanation:</span> {result.explanation}
-                        </p>
-                      )}
-                      
-                      <div className="mt-2 text-sm">
-                        <span className={`${result.score > 0 ? 'text-green-600' : result.score < 0 ? 'text-red-600' : 'text-gray-600'} font-medium`}>
-                          {result.score > 0 ? `+${result.score}` : result.score} marks
-                        </span>
-                      </div>
+          {/* Subject-wise Performance */}
+          <div className="mt-8 mb-6">
+            <h3 className="text-xl font-medium mb-4 text-gray-800">Subject-wise Performance</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {testResults.sectionWiseScores && testResults.sectionWiseScores.map((section, index) => (
+                <div key={index} className="bg-gray-50 p-4 rounded-md border border-gray-200">
+                  <h4 className="font-medium text-gray-800 mb-2">{section.section}</h4>
+                  <div className="flex items-center mb-2">
+                    <div className="w-full bg-gray-200 rounded-full h-2.5">
+                      <div 
+                        className={`h-2.5 rounded-full ${
+                          (section.correctAnswers / section.totalQuestions * 100) >= 70 ? 'bg-green-500' : 
+                          (section.correctAnswers / section.totalQuestions * 100) >= 40 ? 'bg-yellow-500' : 'bg-red-500'
+                        }`} 
+                        style={{ width: `${section.correctAnswers / section.totalQuestions * 100}%` }}
+                      ></div>
                     </div>
-                  );
-                })}
-              </div>
-            ))}
+                    <span className="ml-2 text-sm font-medium text-gray-700">
+                      {Math.round(section.correctAnswers / section.totalQuestions * 100)}%
+                    </span>
+                  </div>
+                  <p className="text-sm text-gray-600">
+                    {section.correctAnswers} correct out of {section.totalQuestions} questions
+                  </p>
+                </div>
+              ))}
+            </div>
           </div>
+          
+          {resultsToDisplay && resultsToDisplay.length > 0 ? (
+            <div className="mt-8">
+              <h3 className="text-xl font-medium mb-4 text-gray-800">Question Breakdown</h3>
+              {resultsToDisplay.map((section, sectionIndex) => (
+                <div key={sectionIndex} className="mb-6">
+                  <h4 className="font-medium text-lg mb-3 text-gray-800">{section.sectionTitle}</h4>
+                  
+                  {section.questions && section.questions.map((result, questionIndex) => {
+                    const questionNumber = sectionIndex * section.questions.length + questionIndex + 1;
+                    const isCorrect = result.isCorrect;
+                    
+                    return (
+                      <div 
+                        key={questionIndex} 
+                        className={`mb-4 p-4 rounded-md ${
+                          isCorrect ? 'bg-green-50 border border-green-200' : 'bg-red-50 border border-red-200'
+                        }`}
+                      >
+                        <p className="font-medium text-gray-800">{questionNumber}. {result.question}</p>
+                        
+                        <div className="mt-3 ml-1 space-y-1">
+                          {result.options && result.options.map((option, optionIndex) => (
+                            <div key={optionIndex} className={`flex items-center p-2 rounded ${
+                              result.correctAnswer === optionIndex ? 'bg-green-100' :
+                              result.userAnswer === optionIndex ? (result.correctAnswer !== optionIndex ? 'bg-red-100' : 'bg-green-100') : 'bg-gray-50 border border-gray-200'
+                            }`}>
+                              <div className={`w-6 h-6 rounded-full flex items-center justify-center mr-2 ${
+                                result.correctAnswer === optionIndex ? 'bg-green-500 text-white' :
+                                result.userAnswer === optionIndex ? (result.correctAnswer !== optionIndex ? 'bg-red-500 text-white' : 'bg-green-500 text-white') : 'bg-gray-300 text-gray-700'
+                              }`}>
+                                {String.fromCharCode(65 + optionIndex)}
+                              </div>
+                              <span className={`${
+                                result.correctAnswer === optionIndex ? 'text-green-800 font-medium' :
+                                result.userAnswer === optionIndex ? (result.correctAnswer !== optionIndex ? 'text-red-800' : 'text-green-800 font-medium') : 'text-gray-700'
+                              }`}>{option}</span>
+                              
+                              {result.correctAnswer === optionIndex && (
+                                <span className="ml-2 text-green-700 text-sm font-medium">(Correct Answer)</span>
+                              )}
+                              {result.userAnswer === optionIndex && result.userAnswer !== result.correctAnswer && (
+                                <span className="ml-2 text-red-700 text-sm font-medium">(Your Answer)</span>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                        
+                        {result.explanation && (
+                          <p className="mt-3 text-gray-700 bg-gray-50 p-2 rounded">
+                            <span className="font-medium">Explanation:</span> {result.explanation}
+                          </p>
+                        )}
+                        
+                        <div className="mt-2 text-sm">
+                          <span className={`${result.score > 0 ? 'text-green-600' : result.score < 0 ? 'text-red-600' : 'text-gray-600'} font-medium`}>
+                            {result.score > 0 ? `+${result.score}` : result.score} marks
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="mt-8 text-center">
+              <p className="text-gray-700">No question breakdown available for this test.</p>
+            </div>
+          )}
           
           <div className="mt-8 flex justify-center">
             <button
@@ -1222,4 +1586,4 @@ const MockTests = () => {
   );
 };
 
-export default MockTests; 
+export default MockTests;
