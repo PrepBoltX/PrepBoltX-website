@@ -241,37 +241,102 @@ exports.generateCustomMockTest = async (req, res) => {
         const questionsPerSubject = Math.ceil(numberOfQuestions / subjects.length);
 
         for (const subject of subjectDocs) {
-            // Generate questions for this subject
-            const questions = [];
-            
-            // In a real implementation, you would fetch questions from a database
-            // or generate them using AI. For now, we'll create some placeholder questions.
-            for (let i = 0; i < questionsPerSubject; i++) {
-                questions.push({
-                    question: `Sample ${subject.name} question ${i + 1}`,
-                    options: [
-                        `Option A for ${subject.name} question ${i + 1}`,
-                        `Option B for ${subject.name} question ${i + 1}`,
-                        `Option C for ${subject.name} question ${i + 1}`,
-                        `Option D for ${subject.name} question ${i + 1}`
-                    ],
-                    correctAnswer: Math.floor(Math.random() * 4), // Random correct answer
-                    marks: 3, // 3 marks per question
-                    negativeMarks: 1, // 1 mark negative marking
-                    explanation: `This is the explanation for ${subject.name} question ${i + 1}`,
-                    subject: subject.name,
-                    difficulty: 'medium'
+            try {
+                // Find mock tests for this subject that are not AI-generated
+                const subjectTests = await MockTest.find({ 
+                    subjects: subject._id,
+                    isGeneratedByAI: false
+                }).limit(5);
+                
+                if (!subjectTests || subjectTests.length === 0) {
+                    console.log(`No tests found for subject: ${subject.name}`);
+                    continue;
+                }
+                
+                // Select a random test from available tests
+                const randomTest = subjectTests[Math.floor(Math.random() * subjectTests.length)];
+                
+                if (!randomTest || !randomTest.sections || randomTest.sections.length === 0) {
+                    console.log(`Invalid test structure for subject: ${subject.name}`);
+                    continue;
+                }
+                
+                // Collect all questions from all sections of this test
+                const allQuestions = [];
+                randomTest.sections.forEach(section => {
+                    if (section.questions && section.questions.length > 0) {
+                        section.questions.forEach(question => {
+                            allQuestions.push({
+                                ...question,
+                                subject: subject.name
+                            });
+                        });
+                    }
+                });
+                
+                // If we have questions, shuffle them and take what we need
+                if (allQuestions.length > 0) {
+                    // Shuffle the questions
+                    for (let i = allQuestions.length - 1; i > 0; i--) {
+                        const j = Math.floor(Math.random() * (i + 1));
+                        [allQuestions[i], allQuestions[j]] = [allQuestions[j], allQuestions[i]];
+                    }
+                    
+                    // Take the number of questions we need
+                    const selectedQuestions = allQuestions.slice(0, questionsPerSubject);
+                    
+                    sections.push({
+                        title: subject.name,
+                        subjectRef: subject._id,
+                        description: `Questions from ${subject.name}`,
+                        questionsCount: selectedQuestions.length,
+                        totalMarks: selectedQuestions.length * 4, // 4 marks per question
+                        questions: selectedQuestions
+                    });
+                    
+                    console.log(`Added ${selectedQuestions.length} questions from ${subject.name}`);
+                } else {
+                    console.log(`No questions found in tests for subject: ${subject.name}`);
+                }
+            } catch (err) {
+                console.error(`Error processing subject ${subject.name}:`, err);
+                // Continue with other subjects if one fails
+            }
+        }
+        
+        // If we couldn't find any real questions, create some placeholder questions as fallback
+        if (sections.length === 0) {
+            console.log('No real questions found, creating placeholder questions');
+            for (const subject of subjectDocs) {
+                const questions = [];
+                
+                for (let i = 0; i < questionsPerSubject; i++) {
+                    questions.push({
+                        question: `Sample ${subject.name} question ${i + 1}`,
+                        options: [
+                            `Option A for ${subject.name} question ${i + 1}`,
+                            `Option B for ${subject.name} question ${i + 1}`,
+                            `Option C for ${subject.name} question ${i + 1}`,
+                            `Option D for ${subject.name} question ${i + 1}`
+                        ],
+                        correctAnswer: Math.floor(Math.random() * 4), // Random correct answer
+                        marks: 4, // 4 marks per question
+                        negativeMarks: 1, // 1 mark negative marking
+                        explanation: `This is the explanation for ${subject.name} question ${i + 1}`,
+                        subject: subject.name,
+                        difficulty: 'medium'
+                    });
+                }
+
+                sections.push({
+                    title: subject.name,
+                    subjectRef: subject._id,
+                    description: `Questions from ${subject.name}`,
+                    questionsCount: questions.length,
+                    totalMarks: questions.length * 4, // 4 marks per question
+                    questions
                 });
             }
-
-            sections.push({
-                title: subject.name,
-                subjectRef: subject._id,
-                description: `Questions from ${subject.name}`,
-                questionsCount: questions.length,
-                totalMarks: questions.length * 3, // 3 marks per question
-                questions
-            });
         }
 
         // Calculate total duration based on number of questions (60 seconds per question)
@@ -285,7 +350,7 @@ exports.generateCustomMockTest = async (req, res) => {
             testType: 'custom',
             subjects,
             duration: duration, // 1 minute per question
-            totalMarks: totalQuestions * 3, // 3 marks per question
+            totalMarks: totalQuestions * 4, // 4 marks per question
             totalQuestions: totalQuestions, // Store the total questions count
             sections,
             isGeneratedByAI: false,
@@ -308,70 +373,299 @@ exports.generateCustomMockTest = async (req, res) => {
 // Submit mock test attempt
 exports.submitMockTestAttempt = async (req, res) => {
     try {
-        const { testId, answers, userId } = req.body;
+        const { testId, answers, userId, timeTaken, scoreData } = req.body;
         const currentUserId = req.user ? req.user.userId : userId; // Support both auth and non-auth for testing
 
-        // Get mock test
-        const mockTest = await MockTest.findById(testId);
-        if (!mockTest) {
-            return res.status(404).json({ message: 'Mock test not found' });
+        // Constants for standardized marking
+        const MARKS_PER_QUESTION = 4; // Always +4 for correct
+        const NEGATIVE_MARKS = 1; // Always -1 for wrong
+
+        console.log('Received mock test submission:');
+        console.log('Test ID:', testId);
+        console.log('Answers format:', JSON.stringify(answers));
+        console.log('Time taken:', timeTaken);
+        console.log('Score data from frontend:', scoreData);
+
+        // Check if this is a custom test (ID starts with "custom-")
+        const isCustomTest = testId && testId.startsWith('custom-');
+        
+        let mockTest;
+        if (!isCustomTest) {
+            // Get mock test from database
+            mockTest = await MockTest.findById(testId);
+            if (!mockTest) {
+                return res.status(404).json({ message: 'Mock test not found' });
+            }
+        } else {
+            // For custom tests, we'll use the score data directly since the test doesn't exist in the database
+            console.log('Processing custom test submission');
         }
 
-        // Calculate score
+        // Use scoreData from frontend if available, otherwise calculate
         let totalScore = 0;
+        let correctAnswersCount = 0;
+        let totalQuestionsCount = 0;
+        let scorePercentage = 0;
         const results = [];
 
-        // Process each section
-        mockTest.sections.forEach((section, sectionIndex) => {
-            const sectionResults = [];
+        if (scoreData && typeof scoreData === 'object') {
+            console.log('Using score data from frontend');
+            totalScore = Number(scoreData.score) || 0;
+            correctAnswersCount = Number(scoreData.correctAnswers) || 0;
+            totalQuestionsCount = Number(scoreData.totalQuestions) || 0;
+            scorePercentage = Number(scoreData.percentage) || 0;
+            
+            console.log('Parsed score data:', {
+                totalScore,
+                correctAnswersCount,
+                totalQuestionsCount,
+                scorePercentage
+            });
+            
+            // For custom tests, we may not have the test in the database
+            if (isCustomTest && !mockTest) {
+                // Create a basic result structure based on the score data
+                results.push({
+                    sectionTitle: 'Custom Test Results',
+                    questions: []
+                });
+            } else if (mockTest && mockTest.sections) {
+                // Process the answers to get the results for the response
+                mockTest.sections.forEach((section, sectionIndex) => {
+                    if (!section || !section.questions) {
+                        console.log(`Section ${sectionIndex} is missing or has no questions`);
+                        return;
+                    }
+                    
+                    const sectionResults = [];
+                    const sectionAnswers = answers[sectionIndex] || [];
+                    
+                    console.log(`Processing section ${sectionIndex}: ${section.title}`);
+                    console.log(`Section has ${section.questions.length} questions`);
+                    console.log(`Answers for this section:`, sectionAnswers);
+                    
+                    section.questions.forEach((question, questionIndex) => {
+                        if (questionIndex >= sectionAnswers.length) {
+                            console.log(`No answer for question ${questionIndex}`);
+                            return;
+                        }
+                        
+                        const userAnswer = sectionAnswers[questionIndex];
+                        const isCorrect = question.correctAnswer === userAnswer;
+                        
+                        // Use standardized marking: +4 for correct, -1 for wrong
+                        let questionScore = 0;
+                        if (isCorrect) {
+                            questionScore = MARKS_PER_QUESTION;
+                        } else if (userAnswer !== null && userAnswer !== undefined) {
+                            questionScore = -NEGATIVE_MARKS;
+                        }
 
-            // Process each question in this section
-            section.questions.forEach((question, questionIndex) => {
-                const userAnswer = answers[sectionIndex] ? answers[sectionIndex][questionIndex] : null;
-                const isCorrect = question.correctAnswer === userAnswer;
+                        sectionResults.push({
+                            question: question.question,
+                            userAnswer,
+                            correctAnswer: question.correctAnswer,
+                            isCorrect,
+                            score: questionScore,
+                            explanation: question.explanation
+                        });
+                    });
 
-                let questionScore = 0;
-                if (isCorrect) {
-                    questionScore = question.marks;
-                    totalScore += questionScore;
-                } else if (userAnswer) { // If answered but incorrect
-                    questionScore = -question.negativeMarks;
-                    totalScore += questionScore;
+                    results.push({
+                        sectionTitle: section.title,
+                        questions: sectionResults
+                    });
+                });
+            }
+        } else if (mockTest && mockTest.sections) {
+            console.log('Calculating score from answers');
+            // Process each section
+            mockTest.sections.forEach((section, sectionIndex) => {
+                if (!section || !section.questions) {
+                    console.log(`Section ${sectionIndex} is missing or has no questions`);
+                    return;
                 }
+                
+                const sectionResults = [];
+                const sectionAnswers = answers[sectionIndex] || [];
+                
+                // Count total questions in this section
+                totalQuestionsCount += section.questions.length;
 
-                sectionResults.push({
-                    question: question.question,
-                    userAnswer,
-                    correctAnswer: question.correctAnswer,
-                    isCorrect,
-                    score: questionScore,
-                    explanation: question.explanation
+                console.log(`Processing section ${sectionIndex}: ${section.title}`);
+                console.log(`Section has ${section.questions.length} questions`);
+                console.log(`Answers for this section:`, sectionAnswers);
+
+                // Process each question in this section
+                section.questions.forEach((question, questionIndex) => {
+                    if (questionIndex >= sectionAnswers.length) {
+                        console.log(`No answer for question ${questionIndex}`);
+                        return;
+                    }
+                    
+                    const userAnswer = sectionAnswers[questionIndex];
+                    console.log(`Question ${questionIndex}: User answer = ${userAnswer}, Correct answer = ${question.correctAnswer}`);
+                    
+                    const isCorrect = question.correctAnswer === userAnswer;
+
+                    // Count correct answers
+                    if (isCorrect) {
+                        correctAnswersCount++;
+                        console.log(`Question ${questionIndex} is correct!`);
+                    }
+
+                    // Use standardized marking: +4 for correct, -1 for wrong
+                    let questionScore = 0;
+                    if (isCorrect) {
+                        questionScore = MARKS_PER_QUESTION;
+                        totalScore += questionScore;
+                    } else if (userAnswer !== null && userAnswer !== undefined) { // If answered but incorrect
+                        questionScore = -NEGATIVE_MARKS;
+                        totalScore += questionScore;
+                    }
+
+                    sectionResults.push({
+                        question: question.question,
+                        userAnswer,
+                        correctAnswer: question.correctAnswer,
+                        isCorrect,
+                        score: questionScore,
+                        explanation: question.explanation
+                    });
+                });
+
+                results.push({
+                    sectionTitle: section.title,
+                    questions: sectionResults
                 });
             });
 
-            results.push({
-                sectionTitle: section.title,
-                questions: sectionResults
-            });
-        });
+            // Calculate percentage score
+            const totalPossibleMarks = totalQuestionsCount * MARKS_PER_QUESTION;
+            scorePercentage = (totalScore / totalPossibleMarks) * 100;
+        } else if (isCustomTest) {
+            // For custom tests without a mockTest object, use the scoreData directly
+            console.log('Using score data for custom test without mockTest object');
+            totalScore = Number(scoreData?.score) || 0;
+            correctAnswersCount = Number(scoreData?.correctAnswers) || 0;
+            totalQuestionsCount = Number(scoreData?.totalQuestions) || 30;
+            scorePercentage = Number(scoreData?.percentage) || 0;
+        }
 
-        // Calculate percentage score
-        const scorePercentage = (totalScore / mockTest.totalMarks) * 100;
+        // Ensure values are valid numbers
+        totalScore = isNaN(totalScore) ? 0 : totalScore;
+        correctAnswersCount = isNaN(correctAnswersCount) ? 0 : correctAnswersCount;
+        totalQuestionsCount = isNaN(totalQuestionsCount) ? 0 : totalQuestionsCount;
+        scorePercentage = isNaN(scorePercentage) ? 0 : Math.max(0, scorePercentage);
+
+        console.log(`Final score values: Total score: ${totalScore}, Percentage: ${scorePercentage}%`);
+        console.log(`Correct answers: ${correctAnswersCount} out of ${totalQuestionsCount}`);
 
         // Update user's mock test attempts if user is authenticated
         if (currentUserId) {
             const user = await User.findById(currentUserId);
             if (user) {
-                user.mockTestAttempts.push({
-                    testId,
-                    score: scorePercentage,
-                    completed: true
-                });
+                console.log(`Updating user ${currentUserId} mock test attempts`);
+                
+                // Create section-wise scores
+                let sectionWiseScores = [];
+                
+                if (mockTest && mockTest.sections) {
+                    sectionWiseScores = mockTest.sections.map((section, sectionIndex) => {
+                        if (!section || !section.questions) {
+                            return {
+                                section: `Section ${sectionIndex}`,
+                                score: 0,
+                                totalQuestions: 0,
+                                correctAnswers: 0
+                            };
+                        }
+                        
+                        let sectionScore = 0;
+                        let sectionCorrect = 0;
+                        const sectionAnswers = answers[sectionIndex] || [];
+                        
+                        section.questions.forEach((question, questionIndex) => {
+                            if (questionIndex >= sectionAnswers.length) {
+                                return;
+                            }
+                            
+                            const userAnswer = sectionAnswers[questionIndex];
+                            const isCorrect = question.correctAnswer === userAnswer;
+                            
+                            // Use standardized marking: +4 for correct, -1 for wrong
+                            if (isCorrect) {
+                                sectionScore += MARKS_PER_QUESTION;
+                                sectionCorrect++;
+                            } else if (userAnswer !== null && userAnswer !== undefined) {
+                                sectionScore -= NEGATIVE_MARKS;
+                            }
+                        });
+                        
+                        return {
+                            section: section.title || `Section ${sectionIndex}`,
+                            score: sectionScore,
+                            totalQuestions: section.questions.length,
+                            correctAnswers: sectionCorrect
+                        };
+                    });
+                } else if (isCustomTest) {
+                    // For custom tests, create a simple section score
+                    sectionWiseScores = [{
+                        section: 'Custom Test',
+                        score: totalScore,
+                        totalQuestions: totalQuestionsCount,
+                        correctAnswers: correctAnswersCount
+                    }];
+                }
+                
+                // Generate a custom test ID if needed
+                const customTestId = isCustomTest ? testId : null;
+                
+                try {
+                    // Add the mock test attempt with all required fields
+                    // For custom tests, store the string ID directly; for regular tests, store the ObjectId
+                    user.mockTestAttempts.push({
+                        testId: isCustomTest ? customTestId : testId, // Don't try to convert custom IDs to ObjectId
+                        score: scorePercentage,
+                        totalScore: totalScore,
+                        totalQuestions: totalQuestionsCount,
+                        correctAnswers: correctAnswersCount,
+                        timeTaken: timeTaken || 0, // Use provided time or default to 0
+                        sectionWiseScores: sectionWiseScores,
+                        completed: true,
+                        date: new Date()
+                    });
 
-                // Update user's total score
-                user.score += scorePercentage / 2; // Mock tests contribute half the weight of regular quizzes
+                    // Update user's total score
+                    user.score += Math.max(0, scorePercentage / 2); // Mock tests contribute half the weight of regular quizzes, ensure non-negative
 
-                await user.save();
+                    // If we have a mockTest object (not a custom test), update its stats
+                    if (mockTest) {
+                        // Update mock test attempt count
+                        mockTest.attemptCount = (mockTest.attemptCount || 0) + 1;
+                        
+                        // Update average score for the mock test
+                        const attemptCount = mockTest.attemptCount || 1;
+                        const prevAvgScore = mockTest.avgScore || 0;
+                        const newTotalScore = (prevAvgScore * (attemptCount - 1) + scorePercentage) / attemptCount;
+                        mockTest.avgScore = newTotalScore;
+                        
+                        // Save both user and mock test
+                        await Promise.all([user.save(), mockTest.save()]);
+                    } else {
+                        // Just save the user for custom tests
+                        await user.save();
+                    }
+                    
+                    console.log('User data saved successfully');
+                } catch (saveError) {
+                    console.error('Error saving user data:', saveError);
+                    return res.status(500).json({ 
+                        message: 'Error saving test results',
+                        error: saveError.message 
+                    });
+                }
             }
         }
 
@@ -379,10 +673,15 @@ exports.submitMockTestAttempt = async (req, res) => {
             message: 'Mock test submitted successfully',
             score: totalScore,
             percentage: scorePercentage,
+            correctAnswers: correctAnswersCount,
+            totalQuestions: totalQuestionsCount,
             results
         });
     } catch (error) {
         console.error('Submit mock test error:', error);
-        res.status(500).json({ message: 'Server error while submitting mock test' });
+        res.status(500).json({ 
+            message: 'Server error while submitting mock test',
+            error: error.message
+        });
     }
 }; 
