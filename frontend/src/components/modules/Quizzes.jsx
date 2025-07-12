@@ -47,7 +47,14 @@ const Quizzes = () => {
         setQuizzes(data);
       } catch (err) {
         console.error('Error fetching quizzes:', err);
-        setError('Failed to load quizzes. Please try again later.');
+        // Improved error handling with more specific message
+        if (err.message === 'Network Error') {
+          setError('Unable to connect to the server. Please check your connection and try again.');
+        } else if (err.status === 500) {
+          setError('Server error occurred. The backend service might be down or experiencing issues.');
+        } else {
+          setError(`Failed to load quizzes: ${err.message || 'Unknown error'}`);
+        }
       } finally {
         setLoading(false);
       }
@@ -118,7 +125,14 @@ const Quizzes = () => {
         setLoading(false);
       } catch (err) {
         console.error('Error fetching subject quizzes:', err);
-        setError('Failed to load quizzes for this subject. Please try again later.');
+        // Improved error handling with more specific message
+        if (err.message === 'Network Error') {
+          setError('Unable to connect to the server. Please check your connection and try again.');
+        } else if (err.status === 500) {
+          setError('Server error occurred. The backend service might be down or experiencing issues.');
+        } else {
+          setError(`Failed to load quizzes for this subject: ${err.message || 'Unknown error'}`);
+        }
         setLoading(false);
       }
     };
@@ -262,7 +276,22 @@ const Quizzes = () => {
       
     } catch (err) {
       console.error('Error submitting quiz:', err);
-      setError('Failed to submit quiz. Please try again later.');
+      
+      // Handle authentication errors
+      if (err.status === 401) {
+        setError('Your session has expired. Please log in again to save your quiz results.');
+        
+        // Redirect to login after a delay
+        setTimeout(() => {
+          dispatch({ type: 'LOGOUT' });
+          dispatch({ type: 'SET_CURRENT_MODULE', payload: 'login' });
+        }, 3000);
+      } else {
+        // Show a more specific error message based on the error
+        const errorMessage = err.message || 'Failed to submit quiz. Please try again later.';
+        setError(errorMessage);
+      }
+      
       setLoading(false);
     }
   };
