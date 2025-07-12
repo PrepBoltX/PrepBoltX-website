@@ -314,6 +314,82 @@ const UserProfile = () => {
           </div>
         </div>
         
+        {/* Mock Test Performance Section */}
+        <div className="bg-white shadow-md rounded-xl p-6 mb-8">
+          <h3 className="text-lg font-semibold text-gray-800 mb-4">Mock Test Performance</h3>
+          
+          {state.user && state.user.mockTestAttempts && state.user.mockTestAttempts.length > 0 ? (
+            <div className="space-y-6">
+              {state.user.mockTestAttempts.map((attempt, index) => (
+                <div key={index} className="border rounded-lg p-4">
+                  <div className="flex justify-between items-start mb-3">
+                    <div>
+                      <h4 className="font-medium text-gray-800">
+                        {attempt.testId && typeof attempt.testId === 'string' && attempt.testId.startsWith('custom-') 
+                          ? 'Custom Mock Test' 
+                          : 'Mock Test'}
+                      </h4>
+                      <div className="text-sm text-gray-500">
+                        {new Date(attempt.date).toLocaleDateString('en-US', { 
+                          year: 'numeric', 
+                          month: 'short', 
+                          day: 'numeric',
+                          hour: '2-digit',
+                          minute: '2-digit'
+                        })}
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-lg font-semibold text-gray-800">{Math.round(attempt.score)}%</div>
+                      <div className="text-sm text-gray-500">
+                        {attempt.correctAnswers} of {attempt.totalQuestions} correct
+                      </div>
+                    </div>
+                  </div>
+                  
+                  {/* Subject-wise Performance */}
+                  {attempt.sectionWiseScores && attempt.sectionWiseScores.length > 0 && (
+                    <div className="mt-3">
+                      <h5 className="text-sm font-medium text-gray-700 mb-2">Subject-wise Performance</h5>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        {attempt.sectionWiseScores.map((section, sIdx) => {
+                          const percentage = Math.round((section.correctAnswers / section.totalQuestions) * 100);
+                          let barColor = 'bg-red-500';
+                          if (percentage >= 70) barColor = 'bg-green-500';
+                          else if (percentage >= 40) barColor = 'bg-yellow-500';
+                          
+                          return (
+                            <div key={sIdx} className="bg-gray-50 p-2 rounded">
+                              <div className="flex justify-between items-center mb-1">
+                                <span className="text-sm font-medium text-gray-700">{section.section}</span>
+                                <span className="text-xs font-medium text-gray-600">{percentage}%</span>
+                              </div>
+                              <div className="w-full bg-gray-200 rounded-full h-2">
+                                <div 
+                                  className={`h-2 rounded-full ${barColor}`} 
+                                  style={{ width: `${percentage}%` }}
+                                ></div>
+                              </div>
+                              <div className="text-xs text-gray-500 mt-1">
+                                {section.correctAnswers}/{section.totalQuestions} correct
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-8 text-gray-500">
+              <p>No mock tests attempted yet.</p>
+              <p className="mt-2 text-sm">Complete mock tests to see your performance here.</p>
+            </div>
+          )}
+        </div>
+        
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div className="bg-white shadow-md rounded-xl p-6">
             <h3 className="text-lg font-semibold text-gray-800 mb-4">Activity by Subject</h3>
