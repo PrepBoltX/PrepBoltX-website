@@ -185,6 +185,26 @@ const appReducer = (state, action) => {
                 localStorage.setItem('user', JSON.stringify(updatedUser));
             }
             
+            // Handle mock test completion
+            if (action.payload.mockTestCompleted && updatedUser) {
+                // Initialize mockTestAttempts array if it doesn't exist
+                if (!updatedUser.mockTestAttempts) {
+                    updatedUser.mockTestAttempts = [];
+                }
+                
+                // Add the mock test result to the user's mock test attempts
+                if (action.payload.mockTestResult) {
+                    // Ensure sectionWiseScores is included in the stored result
+                    updatedUser.mockTestAttempts.push({
+                        ...action.payload.mockTestResult,
+                        sectionWiseScores: action.payload.mockTestResult.sectionWiseScores || []
+                    });
+                    
+                    // Update local storage with the updated user data
+                    localStorage.setItem('user', JSON.stringify(updatedUser));
+                }
+            }
+            
             return { 
                 ...state, 
                 user: updatedUser,
