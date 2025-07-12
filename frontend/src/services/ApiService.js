@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const API_URL = 'http://localhost:3000/api';
+const API_URL = 'http://localhost:5000/api';
 
 // Create axios instance with default config
 const api = axios.create({
@@ -113,7 +113,17 @@ export const getAllQuizzes = async () => {
     const response = await api.get('/quiz');
     return response.data.quizzes;
   } catch (error) {
-    throw error.response?.data || error.message;
+    console.error('Quiz API Error:', error);
+    
+    // Create a more detailed error object
+    const enhancedError = {
+      message: error.response?.data?.message || error.message || 'Unknown error',
+      status: error.response?.status,
+      data: error.response?.data,
+      isAxiosError: error.isAxiosError
+    };
+    
+    throw enhancedError;
   }
 };
 
@@ -140,6 +150,15 @@ export const submitQuizAttempt = async (quizId, answers, timeTaken, questionCoun
       }
     }
     
+    // Check if token exists before making the request
+    const token = localStorage.getItem('token');
+    if (!token) {
+      throw { 
+        status: 401, 
+        message: 'Authentication token is missing. Please log in again.' 
+      };
+    }
+    
     const response = await api.post('/quiz/submit', { 
       quizId, 
       answers, 
@@ -149,7 +168,24 @@ export const submitQuizAttempt = async (quizId, answers, timeTaken, questionCoun
     });
     return response.data;
   } catch (error) {
-    throw error.response?.data || error.message;
+    console.error('Quiz submission error:', error);
+    
+    // Create a more detailed error object
+    const enhancedError = {
+      message: error.response?.data?.message || error.message || 'Unknown error',
+      status: error.response?.status,
+      data: error.response?.data,
+      isAxiosError: error.isAxiosError
+    };
+    
+    // Handle authentication errors
+    if (error.response?.status === 401) {
+      // Clear invalid token
+      localStorage.removeItem('token');
+      enhancedError.message = 'Your session has expired. Please log in again.';
+    }
+    
+    throw enhancedError;
   }
 };
 
@@ -215,7 +251,7 @@ export const generateCustomMockTest = async (subjects, numberOfQuestions = 20) =
   }
 };
 
-export const submitMockTestAttempt = async (testId, answers) => {
+export const submitMockTestAttempt = async (testId, answers, timeTaken, scoreData) => {
   try {
     // Get user ID from localStorage if available
     let userId = null;
@@ -229,13 +265,32 @@ export const submitMockTestAttempt = async (testId, answers) => {
       }
     }
     
+    console.log('Submitting mock test attempt:', { testId, answers, timeTaken, scoreData });
+    
+    // Extract section-wise scores if available
+    const sectionWiseScores = scoreData?.sectionWiseScores || [];
+    
     const response = await api.post('/mock-test/submit', { 
       testId, 
       answers,
-      userId // Include userId in request body as fallback
+      userId, // Include userId in request body as fallback
+      timeTaken, // Include the time taken to complete the test
+      scoreData, // Include the score data calculated on the frontend
+      sectionWiseScores // Include section-wise scores for subject tracking
     });
+    
+    console.log('Mock test submission response:', response.data);
+    
+    // Ensure results are properly structured
+    if (response.data && !response.data.results) {
+      console.warn('No results in API response, creating default structure');
+      // Create a default structure if results are missing
+      response.data.results = [];
+    }
+    
     return response.data;
   } catch (error) {
+    console.error('Error submitting mock test:', error);
     throw error.response?.data || error.message;
   }
 };
