@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useApp } from '../../contexts/AppContext';
 import AnimatedCard from '../common/AnimatedCard';
 import ProgressBar from '../common/ProgressBar';
-import { getAllMockTests, getMockTestById, generateCustomMockTest, submitMockTestAttempt, getAllQuizzes, getQuizById, getMockTestsBySubject, getSeededMockTestsBySubject } from '../../services/ApiService';
+import { getAllMockTests, getMockTestById, generateCustomMockTest, submitMockTestAttempt, getAllQuizzes, getQuizById, getMockTestsBySubject, getSeededMockTestsBySubject, generateFullSDEMockTest } from '../../services/ApiService';
 
 // Constants for standardized tests
 const TEST_DURATION = 1800; // 30 minutes in seconds
@@ -11,6 +11,13 @@ const MARKS_PER_QUESTION = 4; // Always 4 marks per question
 const NEGATIVE_MARKS = 1; // Always -1 for negative marking
 const TOTAL_MARKS = QUESTIONS_PER_TEST * MARKS_PER_QUESTION; // 120 marks
 const TIME_PER_QUESTION = 60; // 60 seconds (1 minute) per question
+
+// Constants for Full SDE Mock Tests
+const FULL_SDE_QUESTIONS = 50;
+const FULL_SDE_MARKS_PER_QUESTION = 2; // 2 marks per question for Full SDE Tests
+const FULL_SDE_NEGATIVE_MARKS = 1; // -1 for incorrect answers in Full SDE Tests
+const FULL_SDE_TOTAL_MARKS = FULL_SDE_QUESTIONS * FULL_SDE_MARKS_PER_QUESTION; // 50 questions × 2 marks = 100 marks
+const FULL_SDE_TEST_DURATION = 3000; // 50 minutes in seconds (60 seconds per question)
 
 const MockTests = () => {
   const { state, dispatch } = useApp();
@@ -35,6 +42,97 @@ const MockTests = () => {
   
   const timerRef = useRef(null);
   const startTimeRef = useRef(null);
+
+  // Fisher-Yates shuffle algorithm for randomizing questions
+  const shuffleArray = (array) => {
+    const shuffled = [...array];
+    for (let i = shuffled.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    }
+    return shuffled;
+  };
+
+  // Define generateFullSDETest function before it's used in useEffect
+  const generateFullSDETest = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      
+      // Generate a full SDE mock test
+      const response = await generateFullSDEMockTest();
+      
+      if (!response || !response.mockTest) {
+        setError('Failed to generate Full SDE mock test');
+        setLoading(false);
+        return;
+      }
+      
+      const test = response.mockTest;
+      
+      // Prepare flat list of questions from all sections
+      const allQuestions = [];
+      
+      test.sections.forEach((section, sectionIndex) => {
+        if (!section.questions) return;
+        
+        section.questions.forEach(question => {
+          allQuestions.push({
+            ...question,
+            sectionTitle: section.title,
+            sectionIndex: sectionIndex,
+            subjectId: section.subjectRef,
+            subjectName: section.title,
+            marks: FULL_SDE_MARKS_PER_QUESTION, // 2 marks per question
+            negativeMarks: FULL_SDE_NEGATIVE_MARKS // -1 for incorrect
+          });
+        });
+      });
+      
+      if (allQuestions.length === 0) {
+        setError('No questions found in the generated test');
+        setLoading(false);
+        return;
+      }
+      
+      // Shuffle all questions for randomized order
+      const shuffledQuestions = shuffleArray(allQuestions);
+      
+      // Standardize the test properties
+      const standardizedTest = {
+        ...test,
+        duration: FULL_SDE_TEST_DURATION,
+        totalMarks: FULL_SDE_TOTAL_MARKS,
+        totalQuestions: FULL_SDE_QUESTIONS,
+        difficulty: 'mixed'
+      };
+      
+      setActiveMockTest(standardizedTest);
+      setTestQuestions(shuffledQuestions);
+      setCurrentQuestionIndex(0);
+      setSelectedAnswers({});
+      setTestCompleted(false);
+      setTestResults(null);
+      
+      // Set timer with full SDE duration
+      setRemainingTime(FULL_SDE_TEST_DURATION);
+      
+      // Clear existing timer
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+      }
+      
+      // Start the timer
+      startTimeRef.current = Date.now();
+      setTimerActive(true);
+      
+      setLoading(false);
+    } catch (err) {
+      console.error('Error generating Full SDE mock test:', err);
+      setError(`Failed to generate Full SDE mock test: ${err.message || 'Unknown error'}`);
+      setLoading(false);
+    }
+  };
 
   // Initial fetch for mock tests
   useEffect(() => {
@@ -71,8 +169,15 @@ const MockTests = () => {
     
     fetchMockTests();
   }, []);
+  
+  // Auto-generate Full SDE mock test when needed - moved to top level
+  useEffect(() => {
+    if (selectedMode === 'full' && mockTests.length === 0 && !loading && !error) {
+      generateFullSDETest();
+    }
+  }, [selectedMode, mockTests.length, loading, error]);
 
-  // Define calculateCurrentScore with useMemo
+  // Calculate current score with useMemo
   const calculateCurrentScore = useMemo(() => {
     return (answers) => {
       let totalScore = 0;
@@ -86,20 +191,22 @@ const MockTests = () => {
         if (userAnswer !== undefined && userAnswer !== null) {
           attempted++;
           
-          // Always use standardized marking: +4 for correct, -1 for wrong
+          // Use the marking scheme based on the question's marks and negative marks
           if (userAnswer === question.correctAnswer) {
-            // Award marks for correct answer
-            totalScore += MARKS_PER_QUESTION;
+            // Award marks for correct answer based on question's marks or test type
+            totalScore += question.marks || (selectedMode === 'full' ? FULL_SDE_MARKS_PER_QUESTION : MARKS_PER_QUESTION);
             correct++;
           } else {
-            // Deduct marks for incorrect answer
-            totalScore -= NEGATIVE_MARKS;
+            // Deduct marks for incorrect answer based on question's negative marks or test type
+            totalScore -= question.negativeMarks || (selectedMode === 'full' ? FULL_SDE_NEGATIVE_MARKS : NEGATIVE_MARKS);
           }
         }
       });
       
-      // Calculate total possible marks
-      const totalPossibleMarks = testQuestions.length * MARKS_PER_QUESTION;
+      // Calculate total possible marks based on question marks and test type
+      const totalPossibleMarks = testQuestions.reduce((total, question) => {
+        return total + (question.marks || (selectedMode === 'full' ? FULL_SDE_MARKS_PER_QUESTION : MARKS_PER_QUESTION));
+      }, 0);
       
       // Calculate percentage (ensure it's not negative)
       const percentage = Math.max(0, (totalScore / totalPossibleMarks) * 100);
@@ -120,7 +227,7 @@ const MockTests = () => {
         total: testQuestions.length
       };
     };
-  }, [testQuestions]);
+  }, [testQuestions, selectedMode]);
 
   // Define finishTest with useCallback
   const finishTest = useCallback(async () => {
@@ -136,8 +243,10 @@ const MockTests = () => {
       // Format answers by section index
       const sectionAnswers = {};
       
-      // Ensure we're only using the current test questions (limited to 30)
-      const currentTestQuestions = testQuestions.slice(0, QUESTIONS_PER_TEST);
+      // Ensure we're only using the current test questions
+      const currentTestQuestions = testQuestions.slice(0, 
+        selectedMode === 'full' ? FULL_SDE_QUESTIONS : QUESTIONS_PER_TEST
+      );
       
       // First, organize questions by section index
       currentTestQuestions.forEach((question, index) => {
@@ -178,23 +287,24 @@ const MockTests = () => {
         const userAnswer = selectedAnswers[questionId];
         const isCorrect = userAnswer === question.correctAnswer;
         
-        // Calculate score for this question using standardized marking
+        // Calculate score for this question based on the question's marks
         let questionScore = 0;
         if (isCorrect) {
-          questionScore = MARKS_PER_QUESTION; // Always +4 for correct
+          questionScore = question.marks || (selectedMode === 'full' ? FULL_SDE_MARKS_PER_QUESTION : MARKS_PER_QUESTION);
         } else if (userAnswer !== undefined) {
-          questionScore = -NEGATIVE_MARKS; // Always -1 for wrong
+          questionScore = -(question.negativeMarks || (selectedMode === 'full' ? FULL_SDE_NEGATIVE_MARKS : NEGATIVE_MARKS));
         }
         
+        // Make sure we're capturing and preserving the actual option contents
         sectionResults[sectionTitle].push({
           question: question.question,
           userAnswer,
           correctAnswer: question.correctAnswer,
           isCorrect,
           score: questionScore,
-          explanation: question.explanation,
-          subject: question.subject,
-          options: question.options // Include options for review
+          explanation: question.explanation || '',
+          subject: question.subject || sectionTitle,
+          options: question.options // Always use the original question options
         });
       });
       
@@ -205,39 +315,53 @@ const MockTests = () => {
       }));
       
       // Calculate time taken as the difference between the standard time limit and remaining time
-      const timeTaken = TEST_DURATION - remainingTime;
+      const testDuration = selectedMode === 'full' ? FULL_SDE_TEST_DURATION : TEST_DURATION;
+      const timeTaken = testDuration - remainingTime;
       
       // Extract subject information from the test questions for section-wise tracking
       const subjectData = {};
       testQuestions.forEach(question => {
-        if (question.subjectId && question.subjectName) {
-          if (!subjectData[question.subjectId]) {
-            subjectData[question.subjectId] = {
-              name: question.subjectName,
-              total: 0,
-              correct: 0
-            };
-          }
-          
-          const questionId = question._id || question.id;
-          const userAnswer = selectedAnswers[questionId];
-          const isCorrect = userAnswer === question.correctAnswer;
-          
-          subjectData[question.subjectId].total++;
-          if (isCorrect) {
-            subjectData[question.subjectId].correct++;
-          }
+        // For Full SDE tests, we want to track by section title (subject name)
+        const subjectKey = selectedMode === 'full' ? 
+          (question.sectionTitle || question.subjectName || 'General') : 
+          (question.subjectId || 'unknown');
+        
+        const subjectName = selectedMode === 'full' ? 
+          (question.sectionTitle || question.subjectName || 'General') : 
+          (question.subjectName || 'Unknown Subject');
+        
+        if (!subjectData[subjectKey]) {
+          subjectData[subjectKey] = {
+            name: subjectName,
+            total: 0,
+            correct: 0
+          };
+        }
+        
+        const questionId = question._id || question.id;
+        const userAnswer = selectedAnswers[questionId];
+        const isCorrect = userAnswer === question.correctAnswer;
+        
+        subjectData[subjectKey].total++;
+        if (isCorrect) {
+          subjectData[subjectKey].correct++;
         }
       });
       
       // Convert to section-wise scores format
-      const sectionWiseScores = Object.keys(subjectData).map(subjectId => ({
-        section: subjectData[subjectId].name,
-        score: subjectData[subjectId].correct * MARKS_PER_QUESTION - (subjectData[subjectId].total - subjectData[subjectId].correct) * NEGATIVE_MARKS,
-        totalQuestions: subjectData[subjectId].total,
-        correctAnswers: subjectData[subjectId].correct,
-        subjectId: subjectId // Add subject ID for tracking
-      }));
+      const sectionWiseScores = Object.keys(subjectData).map(subjectKey => {
+        // Use the appropriate marking scheme based on test type
+        const marksPerQ = selectedMode === 'full' ? FULL_SDE_MARKS_PER_QUESTION : MARKS_PER_QUESTION;
+        const negativeM = selectedMode === 'full' ? FULL_SDE_NEGATIVE_MARKS : NEGATIVE_MARKS;
+        
+        return {
+          section: subjectData[subjectKey].name,
+          score: subjectData[subjectKey].correct * marksPerQ - (subjectData[subjectKey].total - subjectData[subjectKey].correct) * negativeM,
+          totalQuestions: subjectData[subjectKey].total,
+          correctAnswers: subjectData[subjectKey].correct,
+          subjectId: subjectKey // Add subject ID for tracking
+        };
+      });
       
       // Check if this is a custom test or default mock test
       const isCustomTest = activeMockTest?._id && (activeMockTest._id.startsWith('custom-') || activeMockTest._id.startsWith('default-'));
@@ -284,7 +408,8 @@ const MockTests = () => {
               percentage: scoreData.percentage,
               correctAnswers: scoreData.correct,
               totalQuestions: scoreData.total,
-              sectionWiseScores: sectionWiseScores // Add section-wise scores
+              sectionWiseScores: sectionWiseScores, // Add section-wise scores
+              results: resultsArray // Include the full results with options
             }
           );
           
@@ -342,7 +467,7 @@ const MockTests = () => {
       setError('Failed to submit mock test. Please try again later.');
       setLoading(false);
     }
-  }, [testQuestions, selectedAnswers, activeMockTest, dispatch, calculateCurrentScore, remainingTime]);
+  }, [testQuestions, selectedAnswers, activeMockTest, dispatch, calculateCurrentScore, remainingTime, selectedMode]);
 
   // Timer effect
   useEffect(() => {
@@ -393,7 +518,44 @@ const MockTests = () => {
 
   const selectMode = (mode) => {
     setSelectedMode(mode);
+    setSelectedSubjectFilter(null);
     setSelectedMockTest(null);
+    setMockTests([]);
+    
+    // If full SDE mock test mode is selected, we need to fetch mock tests of type 'full'
+    if (mode === 'full') {
+      fetchFullSDEMockTests();
+    }
+  };
+  
+  const fetchFullSDEMockTests = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      
+      // Fetch all mock tests and filter for 'full' type tests
+      const allTests = await getAllMockTests();
+      
+      if (allTests && allTests.length > 0) {
+        const fullTests = allTests.filter(test => test.testType === 'full')
+          .map(test => ({
+            ...test,
+            duration: FULL_SDE_TEST_DURATION,
+            totalQuestions: FULL_SDE_QUESTIONS,
+            totalMarks: FULL_SDE_TOTAL_MARKS
+          }));
+        
+        setMockTests(fullTests);
+      } else {
+        setMockTests([]);
+      }
+    } catch (err) {
+      console.error('Error fetching full SDE mock tests:', err);
+      setError('Failed to load Full SDE mock tests');
+      setMockTests([]);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const selectSubject = async (subject) => {
@@ -502,7 +664,9 @@ const MockTests = () => {
               const allSubjectQuestions = [];
               subjectTest.sections.forEach((section, sectionIndex) => {
                 if (section.questions && section.questions.length > 0) {
+                  console.log(`Section ${sectionIndex}: ${section.title} has ${section.questions.length} questions`);
                   section.questions.forEach(question => {
+                    // Ensure options are preserved as is from the original question
                     allSubjectQuestions.push({
                       ...question,
                       sectionTitle: section.title || subject?.name || `Subject ${subjectId}`,
@@ -510,9 +674,12 @@ const MockTests = () => {
                       subjectId: subjectId,
                       subjectName: subject?.name || `Subject ${subjectId}`,
                       marks: MARKS_PER_QUESTION,
-                      negativeMarks: NEGATIVE_MARKS
+                      negativeMarks: NEGATIVE_MARKS,
+                      options: question.options // Explicitly preserve options
                     });
                   });
+                } else {
+                  console.log(`Section ${sectionIndex} has no questions or is invalid`);
                 }
               });
               
@@ -546,6 +713,7 @@ const MockTests = () => {
               if (section.questions && section.questions.length > 0) {
                 console.log(`Section ${sectionIndex}: ${section.title} has ${section.questions.length} questions`);
                 section.questions.forEach(question => {
+                  // Ensure options are preserved as is from the original question
                   allSubjectQuestions.push({
                     ...question,
                     sectionTitle: section.title || subject?.name || `Subject ${subjectId}`,
@@ -553,7 +721,8 @@ const MockTests = () => {
                     subjectId: subjectId,
                     subjectName: subject?.name || `Subject ${subjectId}`,
                     marks: MARKS_PER_QUESTION,
-                    negativeMarks: NEGATIVE_MARKS
+                    negativeMarks: NEGATIVE_MARKS,
+                    options: question.options // Explicitly preserve options
                   });
                 });
               } else {
@@ -577,7 +746,6 @@ const MockTests = () => {
             subjectQuestions[subjectId] = shuffledSubjectQuestions.slice(0, questionsToTake);
             
             console.log(`Added ${Math.min(shuffledSubjectQuestions.length, questionsToTake)} questions from ${subject?.name || subjectId}`);
-            
           } catch (err) {
             console.error(`Error fetching test for subject ID ${subjectId}:`, err);
             // Continue with other subjects if one fails
@@ -637,7 +805,7 @@ const MockTests = () => {
           return;
         }
         
-      } else if (selectedMode === 'timed' || selectedMode === 'full') {
+      } else if (selectedMode === 'full') {
         if (!selectedMockTest) {
           setError('Please select a mock test');
           setLoading(false);
@@ -646,6 +814,12 @@ const MockTests = () => {
         
         // Get the specific mock test
         test = await getMockTestById(selectedMockTest._id);
+        
+        if (!test) {
+          setError('Could not load the test');
+          setLoading(false);
+          return;
+        }
       } else {
         setError('Please select a test mode');
         setLoading(false);
@@ -665,42 +839,50 @@ const MockTests = () => {
         if (!section.questions) return;
         
         section.questions.forEach(question => {
+          // Use the appropriate marking scheme based on the test type
+          const marksPerQuestion = selectedMode === 'full' ? FULL_SDE_MARKS_PER_QUESTION : MARKS_PER_QUESTION;
+          const negativeMarks = selectedMode === 'full' ? FULL_SDE_NEGATIVE_MARKS : NEGATIVE_MARKS;
+          
           allQuestions.push({
             ...question,
             sectionTitle: section.title,
             sectionIndex: sectionIndex, // Add section index to each question
-            marks: MARKS_PER_QUESTION, // Standardized marks per question
-            negativeMarks: NEGATIVE_MARKS // Standardized negative marking
+            marks: marksPerQuestion, // Use the appropriate marks per question
+            negativeMarks: negativeMarks // Use the appropriate negative marking
           });
         });
       });
       
-      // For non-custom tests, select exactly 30 random questions
+      // Select appropriate number of questions based on test type
+      const questionsPerTest = selectedMode === 'full' ? FULL_SDE_QUESTIONS : QUESTIONS_PER_TEST;
+      const totalMarks = selectedMode === 'full' ? FULL_SDE_TOTAL_MARKS : TOTAL_MARKS;
+      const testDuration = selectedMode === 'full' ? FULL_SDE_TEST_DURATION : TEST_DURATION;
+      
       let finalQuestions;
       if (selectedMode === 'custom') {
         // For custom tests, we've already prepared the questions with exact distribution
         finalQuestions = allQuestions;
-      } else if (allQuestions.length > QUESTIONS_PER_TEST) {
-        // Shuffle the array and take the first 30 questions
-        finalQuestions = shuffleArray(allQuestions).slice(0, QUESTIONS_PER_TEST);
-      } else if (allQuestions.length < QUESTIONS_PER_TEST) {
-        // If less than 30 questions, duplicate some randomly to reach exactly 30
+      } else if (allQuestions.length > questionsPerTest) {
+        // Shuffle the array and take the first N questions
+        finalQuestions = shuffleArray(allQuestions).slice(0, questionsPerTest);
+      } else if (allQuestions.length < questionsPerTest) {
+        // If less than N questions, duplicate some randomly to reach exactly N
         finalQuestions = [...allQuestions];
-        while (finalQuestions.length < QUESTIONS_PER_TEST) {
+        while (finalQuestions.length < questionsPerTest) {
           const randomQuestion = allQuestions[Math.floor(Math.random() * allQuestions.length)];
           finalQuestions.push({...randomQuestion});
         }
       } else {
-        // If exactly 30 questions, shuffle them
+        // If exactly N questions, shuffle them
         finalQuestions = shuffleArray(allQuestions);
       }
       
-      // Create standardized test with consistent parameters
+      // Create standardized test with appropriate parameters
       const standardizedTest = {
         ...test,
-        duration: TEST_DURATION, // Always 30 minutes
-        totalMarks: TOTAL_MARKS, // Always 120 marks (30 questions × 4 marks)
-        totalQuestions: QUESTIONS_PER_TEST, // Always 30 questions
+        duration: testDuration,
+        totalMarks: totalMarks,
+        totalQuestions: questionsPerTest,
         difficulty: 'mixed'
       };
       
@@ -711,8 +893,8 @@ const MockTests = () => {
       setTestCompleted(false);
       setTestResults(null);
       
-      // Set up the timer with standard time limit
-      setRemainingTime(TEST_DURATION);
+      // Set up the timer with appropriate time limit
+      setRemainingTime(testDuration);
       
       // Clear any existing timer
       if (timerRef.current) {
@@ -729,16 +911,6 @@ const MockTests = () => {
       setError(`Failed to generate mock test: ${err.message || 'Unknown error'}`);
       setLoading(false);
     }
-  };
-
-  // Fisher-Yates shuffle algorithm for randomizing questions
-  const shuffleArray = (array) => {
-    const shuffled = [...array];
-    for (let i = shuffled.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
-    }
-    return shuffled;
   };
 
   const getTestTitle = () => {
@@ -921,7 +1093,7 @@ const MockTests = () => {
           >
             <h2 className="text-2xl font-bold mb-2">Full SDE Mocks</h2>
             <p className="mb-8">Comprehensive tests covering all subjects for complete preparation.</p>
-            <p>Total Mock Tests: <span className="font-semibold">3</span></p>
+            <p>Total Mock Tests: <span className="font-semibold">1</span></p>
           </AnimatedCard>
           
           <AnimatedCard
@@ -1055,7 +1227,13 @@ const MockTests = () => {
   }
 
   // Show mock test details when selected but not yet started
-  if (selectedMode === 'subject' && selectedMockTest && !activeMockTest) {
+  if ((selectedMode === 'subject' || selectedMode === 'full') && selectedMockTest && !activeMockTest) {
+    // Use different marking scheme based on test type
+    const isFullSDE = selectedMode === 'full';
+    const marksPerQuestion = isFullSDE ? FULL_SDE_MARKS_PER_QUESTION : MARKS_PER_QUESTION;
+    const negativeMarks = isFullSDE ? FULL_SDE_NEGATIVE_MARKS : NEGATIVE_MARKS;
+    const totalQuestions = isFullSDE ? FULL_SDE_QUESTIONS : QUESTIONS_PER_TEST;
+    
     return (
       <div className="p-6">
         <div className="flex justify-between items-center mb-8">
@@ -1091,12 +1269,12 @@ const MockTests = () => {
             
             <div className="p-4 bg-amber-50 rounded-md">
               <div className="font-medium mb-1 text-gray-700">Difficulty</div>
-              <div className="text-xl capitalize text-gray-800">{selectedMockTest.difficulty}</div>
+              <div className="text-xl capitalize text-gray-800">{selectedMockTest.difficulty || "Mixed"}</div>
             </div>
             
             <div className="p-4 bg-purple-50 rounded-md">
               <div className="font-medium mb-1 text-gray-700">Questions</div>
-              <div className="text-xl text-gray-800">{selectedMockTest.totalQuestions || QUESTIONS_PER_TEST}</div>
+              <div className="text-xl text-gray-800">{totalQuestions}</div>
             </div>
           </div>
           
@@ -1105,11 +1283,11 @@ const MockTests = () => {
             <ul className="space-y-3 text-gray-700 bg-gray-50 p-4 rounded-md">
               <li className="flex items-start">
                 <span className="mr-2 text-blue-600">•</span> 
-                <span>Each question carries {MARKS_PER_QUESTION} marks</span>
+                <span>Each question carries {marksPerQuestion} marks</span>
               </li>
               <li className="flex items-start">
                 <span className="mr-2 text-blue-600">•</span> 
-                <span>There is negative marking of 1 mark for wrong answers</span>
+                <span>There is negative marking of {negativeMarks} mark for wrong answers</span>
               </li>
               <li className="flex items-start">
                 <span className="mr-2 text-blue-600">•</span> 
@@ -1196,12 +1374,10 @@ const MockTests = () => {
 
   // Show test selection for Full SDE Mocks mode
   if (selectedMode === 'full' && !selectedMockTest && !activeMockTest) {
-    const fullMockTests = mockTests.filter(test => test.testType === 'full');
-    
     return (
       <div className="p-6">
         <div className="flex justify-between items-center mb-6">
-          <h1 className="text-3xl font-bold text-gray-800">Full SDE Mocks</h1>
+          <h1 className="text-3xl font-bold text-gray-800">Full SDE Mock Tests</h1>
           <button
             className="px-4 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300"
             onClick={() => setSelectedMode(null)}
@@ -1210,61 +1386,100 @@ const MockTests = () => {
           </button>
         </div>
         
-        {fullMockTests.length === 0 ? (
-          <p className="text-gray-700">No full mock tests available.</p>
+        {loading ? (
+          <div className="flex justify-center items-center h-64">
+            <div className="spinner"></div>
+            <p className="ml-2">Loading mock tests...</p>
+          </div>
+        ) : error ? (
+          <div className="text-center p-4">
+            <div className="text-red-600 mb-4">{error}</div>
+            <button 
+              className="px-4 py-2 bg-blue-500 text-white rounded-md"
+              onClick={() => setError(null)}
+            >
+              Try Again
+            </button>
+          </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {fullMockTests.map((test) => (
-              <AnimatedCard
-                key={test._id}
-                className="p-6 cursor-pointer hover:shadow-lg transition-all bg-white border border-gray-200"
-                onClick={() => selectMockTest(test)}
-              >
-                <h3 className="text-xl font-medium text-gray-800">{test.title}</h3>
-                <p className="text-gray-600 mt-2">{test.description}</p>
-                <div className="mt-4">
-                  <div className="flex items-center mb-2">
-                    <span className="mr-2 text-gray-700">Duration:</span>
-                    <span className="font-semibold text-gray-800">{formatTime(test.duration)}</span>
+          <div className="flex flex-col space-y-6 max-w-4xl mx-auto">
+            {/* Removing the About Full SDE Mock Tests white box */}
+            
+            <div className="grid grid-cols-1 md:grid-cols-1 gap-6">
+              {mockTests.slice(0, 1).map(test => (
+                <AnimatedCard
+                  key={test._id}
+                  className="p-6 cursor-pointer hover:shadow-lg transition-all shadow-md rounded-lg bg-gradient-to-r from-orange-700 to-orange-600 text-white"
+                  onClick={() => selectMockTest(test)}
+                >
+                  <div className="flex justify-between items-start mb-4">
+                    <h2 className="text-2xl font-bold text-white">{test.title}</h2>
+                    <span className="bg-white text-orange-700 px-3 py-1 rounded-md text-sm font-medium">
+                      Full SDE
+                    </span>
                   </div>
-                  <div className="flex items-center mb-2">
-                    <span className="mr-2 text-gray-700">Total Marks:</span>
-                    <span className="font-semibold text-gray-800">{test.totalMarks}</span>
+                  <p className="mb-6 text-white text-lg">{test.description}</p>
+                  <div className="grid grid-cols-2 gap-6 text-base">
+                    <div>
+                      <p className="text-gray-200 font-medium mb-1">Duration:</p>
+                      <p className="font-semibold text-white">{Math.floor(test.duration / 60)} mins</p>
+                    </div>
+                    <div>
+                      <p className="text-gray-200 font-medium mb-1">Total Marks:</p>
+                      <p className="font-semibold text-white">{test.totalMarks}</p>
+                    </div>
+                    <div>
+                      <p className="text-gray-200 font-medium mb-1">Questions:</p>
+                      <p className="font-semibold text-white">{test.totalQuestions || FULL_SDE_QUESTIONS}</p>
+                    </div>
+                    <div>
+                      <p className="text-gray-200 font-medium mb-1">Difficulty:</p>
+                      <p className="font-semibold text-white capitalize">Mixed</p>
+                    </div>
                   </div>
-                  <div className="flex items-center">
-                    <span className="mr-2 text-gray-700">Difficulty:</span>
-                    <span className="font-semibold capitalize text-gray-800">{test.difficulty || 'Medium'}</span>
-                  </div>
-                </div>
-              </AnimatedCard>
-            ))}
+                </AnimatedCard>
+              ))}
+            </div>
           </div>
         )}
       </div>
     );
   }
 
-  // Show test details before starting
-  if (selectedMockTest && !activeMockTest) {
+  // Show mock test details when selected but not yet started
+  if ((selectedMode === 'subject' || selectedMode === 'full') && selectedMockTest && !activeMockTest) {
+    // Use different marking scheme based on test type
+    const isFullSDE = selectedMode === 'full';
+    const marksPerQuestion = isFullSDE ? FULL_SDE_MARKS_PER_QUESTION : MARKS_PER_QUESTION;
+    const negativeMarks = isFullSDE ? FULL_SDE_NEGATIVE_MARKS : NEGATIVE_MARKS;
+    const totalQuestions = isFullSDE ? FULL_SDE_QUESTIONS : QUESTIONS_PER_TEST;
+    
     return (
-      <div className="max-w-3xl mx-auto p-6">
-        <div className="flex justify-between items-center mb-6">
-          <h1 className="text-3xl font-bold text-gray-800">{selectedMockTest.title}</h1>
-          <button 
+      <div className="p-6">
+        <div className="flex justify-between items-center mb-8">
+          <h1 className="text-3xl font-bold text-gray-800">
+            {selectedMockTest.title}
+          </h1>
+          <button
             className="px-4 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300"
-            onClick={() => setSelectedMockTest(null)}
+            onClick={() => {
+              setSelectedMockTest(null);
+            }}
           >
-            Back
+            Back to Subjects
           </button>
         </div>
         
         <div className="bg-white p-6 rounded-lg shadow-lg mb-6">
-          <p className="text-lg mb-4 text-gray-700">{selectedMockTest.description}</p>
+          <div className="mb-6">
+            <h2 className="text-2xl font-medium mb-4 text-gray-800">Test Description</h2>
+            <p className="text-lg text-gray-700">{selectedMockTest.description}</p>
+          </div>
           
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
             <div className="p-4 bg-blue-50 rounded-md">
               <div className="font-medium mb-1 text-gray-700">Duration</div>
-              <div className="text-xl text-gray-800">{formatTime(selectedMockTest.duration)}</div>
+              <div className="text-xl text-gray-800">{Math.floor(selectedMockTest.duration / 60)} mins</div>
             </div>
             
             <div className="p-4 bg-green-50 rounded-md">
@@ -1272,17 +1487,42 @@ const MockTests = () => {
               <div className="text-xl text-gray-800">{selectedMockTest.totalMarks}</div>
             </div>
             
-            <div className="p-4 bg-purple-50 rounded-md">
+            <div className="p-4 bg-amber-50 rounded-md">
               <div className="font-medium mb-1 text-gray-700">Difficulty</div>
-              <div className="text-xl capitalize text-gray-800">{selectedMockTest.difficulty}</div>
+              <div className="text-xl capitalize text-gray-800">{selectedMockTest.difficulty || "Mixed"}</div>
             </div>
             
-            <div className="p-4 bg-amber-50 rounded-md">
+            <div className="p-4 bg-purple-50 rounded-md">
               <div className="font-medium mb-1 text-gray-700">Questions</div>
-              <div className="text-xl text-gray-800">{selectedMockTest.totalQuestions || QUESTIONS_PER_TEST}</div>
+              <div className="text-xl text-gray-800">{totalQuestions}</div>
             </div>
           </div>
           
+          <div className="mb-6">
+            <h3 className="text-xl font-medium mb-4 text-gray-800">Instructions</h3>
+            <ul className="space-y-3 text-gray-700 bg-gray-50 p-4 rounded-md">
+              <li className="flex items-start">
+                <span className="mr-2 text-blue-600">•</span> 
+                <span>Each question carries {marksPerQuestion} marks</span>
+              </li>
+              <li className="flex items-start">
+                <span className="mr-2 text-blue-600">•</span> 
+                <span>There is negative marking of {negativeMarks} mark for wrong answers</span>
+              </li>
+              <li className="flex items-start">
+                <span className="mr-2 text-blue-600">•</span> 
+                <span>The test will automatically submit when time expires</span>
+              </li>
+              <li className="flex items-start">
+                <span className="mr-2 text-blue-600">•</span> 
+                <span>Do not refresh the page during the test</span>
+              </li>
+              <li className="flex items-start">
+                <span className="mr-2 text-blue-600">•</span> 
+                <span>You can review and change your answers before submission</span>
+              </li>
+            </ul>
+          </div>
         </div>
         
         <div className="mt-8 flex justify-center">
@@ -1293,6 +1533,61 @@ const MockTests = () => {
             Start Test
           </button>
         </div>
+      </div>
+    );
+  }
+
+  // Show custom test creation UI
+  if (selectedMode === 'custom' && !activeMockTest && !selectedMockTest) {
+    return (
+      <div className="p-6">
+        <div className="flex justify-between items-center mb-6">
+          <h1 className="text-3xl font-bold text-gray-800">Create Custom Test</h1>
+          <button 
+            className="px-4 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300"
+            onClick={() => setSelectedMode(null)}
+          >
+            Back
+          </button>
+        </div>
+        
+        <h2 className="text-xl font-medium mb-4 text-gray-700">Select Subjects (at least one)</h2>
+        
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
+          {state.subjects.map((subject) => (
+            <div 
+              key={subject._id}
+              className={`p-4 rounded-md border cursor-pointer transition-all ${
+                selectedSubjects.includes(subject._id)
+                  ? 'border-green-600 bg-green-50 text-gray-800'
+                  : 'border-gray-300 hover:border-green-400 text-gray-700'
+              }`}
+              onClick={() => toggleSubjectSelection(subject._id)}
+            >
+              <div className="flex items-center">
+                <input 
+                  type="checkbox" 
+                  checked={selectedSubjects.includes(subject._id)}
+                  onChange={() => {}}
+                  className="mr-3 h-4 w-4 text-green-600"
+                />
+                <span>{subject.name}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+        
+        <button 
+          className={`px-6 py-3 rounded-md font-medium ${
+            selectedSubjects.length > 0 
+              ? 'bg-green-600 text-white hover:bg-green-700'
+              : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+          }`}
+          onClick={generateTest}
+          disabled={selectedSubjects.length === 0}
+        >
+          Generate Test
+        </button>
       </div>
     );
   }
@@ -1320,12 +1615,12 @@ const MockTests = () => {
         const userAnswer = selectedAnswers[questionId];
         const isCorrect = userAnswer === question.correctAnswer;
         
-        // Calculate score for this question using standardized marking
+        // Calculate score for this question using the appropriate marking scheme
         let questionScore = 0;
         if (isCorrect) {
-          questionScore = MARKS_PER_QUESTION; // Always +4 for correct
+          questionScore = question.marks || (selectedMode === 'full' ? FULL_SDE_MARKS_PER_QUESTION : MARKS_PER_QUESTION);
         } else if (userAnswer !== undefined) {
-          questionScore = -NEGATIVE_MARKS; // Always -1 for wrong
+          questionScore = -(question.negativeMarks || (selectedMode === 'full' ? FULL_SDE_NEGATIVE_MARKS : NEGATIVE_MARKS));
         }
         
         sectionResults[sectionTitle].push({
@@ -1334,9 +1629,9 @@ const MockTests = () => {
           correctAnswer: question.correctAnswer,
           isCorrect,
           score: questionScore,
-          explanation: question.explanation,
-          subject: question.subject,
-          options: question.options // Include options for review
+          explanation: question.explanation || '',
+          subject: question.subject || sectionTitle,
+          options: question.options || [] // Preserve the original options
         });
       });
       
@@ -1347,7 +1642,82 @@ const MockTests = () => {
       }));
       
       console.log('Generated results:', resultsToDisplay);
+    } else {
+      // Ensure all questions in the results have options but preserve original content
+      resultsToDisplay = resultsToDisplay.map(section => {
+        if (section.questions) {
+          section.questions = section.questions.map(question => {
+            // Only use fallback if options are completely missing
+            if (!question.options || !Array.isArray(question.options) || question.options.length === 0) {
+              // Try to find the matching question in testQuestions to get the original options
+              const originalQuestion = testQuestions.find(q => q.question === question.question);
+              if (originalQuestion && originalQuestion.options) {
+                question.options = originalQuestion.options;
+              } else {
+                question.options = ['Option A', 'Option B', 'Option C', 'Option D']; // Default options only if necessary
+              }
+            }
+            return question;
+          });
+        }
+        return section;
+      });
     }
+    
+    // Generate subject-wise performance data if it's missing
+    if (!testResults.sectionWiseScores || testResults.sectionWiseScores.length === 0) {
+      console.log('No section-wise scores found, generating from test questions and answers');
+      
+      // Extract subject information from the test questions for section-wise tracking
+      const subjectData = {};
+      testQuestions.forEach(question => {
+        // For Full SDE tests, we want to track by section title (subject name)
+        const subjectKey = selectedMode === 'full' ? 
+          (question.sectionTitle || question.subjectName || 'General') : 
+          (question.subjectId || 'unknown');
+        
+        const subjectName = selectedMode === 'full' ? 
+          (question.sectionTitle || question.subjectName || 'General') : 
+          (question.subjectName || 'Unknown Subject');
+        
+        if (!subjectData[subjectKey]) {
+          subjectData[subjectKey] = {
+            name: subjectName,
+            total: 0,
+            correct: 0
+          };
+        }
+        
+        const questionId = question._id || question.id || question._id;
+        const userAnswer = selectedAnswers[questionId];
+        const isCorrect = userAnswer === question.correctAnswer;
+        
+        subjectData[subjectKey].total++;
+        if (isCorrect) {
+          subjectData[subjectKey].correct++;
+        }
+      });
+      
+      // Convert to section-wise scores format
+      testResults.sectionWiseScores = Object.keys(subjectData).map(subjectKey => {
+        // Use the appropriate marking scheme based on test type
+        const marksPerQ = selectedMode === 'full' ? FULL_SDE_MARKS_PER_QUESTION : MARKS_PER_QUESTION;
+        const negativeM = selectedMode === 'full' ? FULL_SDE_NEGATIVE_MARKS : NEGATIVE_MARKS;
+        
+        return {
+          section: subjectData[subjectKey].name,
+          score: subjectData[subjectKey].correct * marksPerQ - (subjectData[subjectKey].total - subjectData[subjectKey].correct) * negativeM,
+          totalQuestions: subjectData[subjectKey].total,
+          correctAnswers: subjectData[subjectKey].correct,
+          subjectId: subjectKey // Add subject ID for tracking
+        };
+      });
+      
+      console.log('Generated section-wise scores:', testResults.sectionWiseScores);
+    }
+    
+    // Calculate the total marks based on test type
+    const totalMarksForTest = selectedMode === 'full' ? FULL_SDE_TOTAL_MARKS : TOTAL_MARKS;
     
     return (
       <div className="max-w-3xl mx-auto p-6">
@@ -1360,7 +1730,7 @@ const MockTests = () => {
               <div className="w-48 h-48 rounded-full bg-gray-100 flex flex-col items-center justify-center border-8 border-blue-500">
                 <span className="text-4xl font-bold text-gray-800">{Math.round(score)}%</span>
                 <span className="text-gray-600 mt-2">
-                  {testResults.score} / {TOTAL_MARKS} marks
+                  {testResults.score} / {totalMarksForTest} marks
                 </span>
               </div>
             </div>
@@ -1380,7 +1750,10 @@ const MockTests = () => {
             <h3 className="text-xl font-medium mb-4 text-gray-800">Subject-wise Performance</h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {testResults.sectionWiseScores && testResults.sectionWiseScores.map((section, index) => (
-                <div key={index} className="bg-gray-50 p-4 rounded-md border border-gray-200">
+                <div key={index} className={`p-4 rounded-md border ${
+                  (section.correctAnswers / section.totalQuestions * 100) >= 70 ? 'bg-green-50 border-green-200' : 
+                  (section.correctAnswers / section.totalQuestions * 100) >= 40 ? 'bg-yellow-50 border-yellow-200' : 'bg-red-50 border-red-200'
+                }`}>
                   <h4 className="font-medium text-gray-800 mb-2">{section.section}</h4>
                   <div className="flex items-center mb-2">
                     <div className="w-full bg-gray-200 rounded-full h-2.5">
@@ -1396,9 +1769,14 @@ const MockTests = () => {
                       {Math.round(section.correctAnswers / section.totalQuestions * 100)}%
                     </span>
                   </div>
-                  <p className="text-sm text-gray-600">
-                    {section.correctAnswers} correct out of {section.totalQuestions} questions
-                  </p>
+                  <div className="flex justify-between text-sm">
+                    <p className="text-gray-600">
+                      {section.correctAnswers} correct out of {section.totalQuestions} questions
+                    </p>
+                    <p className={`font-medium ${section.score > 0 ? 'text-green-600' : 'text-red-600'}`}>
+                      {section.score > 0 ? '+' : ''}{section.score} marks
+                    </p>
+                  </div>
                 </div>
               ))}
             </div>
@@ -1439,16 +1817,54 @@ const MockTests = () => {
                               <span className={`${
                                 result.correctAnswer === optionIndex ? 'text-green-800 font-medium' :
                                 result.userAnswer === optionIndex ? (result.correctAnswer !== optionIndex ? 'text-red-800' : 'text-green-800 font-medium') : 'text-gray-700'
-                              }`}>{option}</span>
+                              }`}>
+                                {option}
+                              </span>
                               
-                              {result.correctAnswer === optionIndex && (
-                                <span className="ml-2 text-green-700 text-sm font-medium">(Correct Answer)</span>
-                              )}
-                              {result.userAnswer === optionIndex && result.userAnswer !== result.correctAnswer && (
-                                <span className="ml-2 text-red-700 text-sm font-medium">(Your Answer)</span>
-                              )}
+                              {/* Show the answer status with clear labels */}
+                              <div className="ml-auto flex items-center">
+                                {result.userAnswer === optionIndex && (
+                                  <span className={`px-2 py-1 text-sm font-medium rounded ${
+                                    result.userAnswer === result.correctAnswer ? 'bg-green-200 text-green-800' : 'bg-red-200 text-red-800'
+                                  }`}>
+                                    Your Answer
+                                  </span>
+                                )}
+                                {result.correctAnswer === optionIndex && (
+                                  <span className="px-2 py-1 ml-2 bg-green-200 text-green-800 text-sm font-medium rounded">
+                                    Correct Answer
+                                  </span>
+                                )}
+                              </div>
                             </div>
                           ))}
+                        </div>
+                        
+                        {/* Add a summary of user's answer vs correct answer */}
+                        <div className="mt-4 p-3 bg-gray-50 rounded-md border border-gray-200">
+                          <div className="flex flex-wrap gap-4">
+                            <div>
+                              <span className="text-gray-700 font-medium">Your answer:</span> 
+                              {result.userAnswer !== undefined && result.userAnswer !== null ? (
+                                <span className={`ml-2 ${result.isCorrect ? 'text-green-600' : 'text-red-600'} font-medium`}>
+                                  {String.fromCharCode(65 + result.userAnswer)} - {result.options[result.userAnswer]}
+                                </span>
+                              ) : (
+                                <span className="ml-2 text-gray-500 italic">Not answered</span>
+                              )}
+                            </div>
+                            
+                            <div>
+                              <span className="text-gray-700 font-medium">Correct answer:</span> 
+                              {result.correctAnswer !== undefined && result.correctAnswer !== null ? (
+                                <span className="ml-2 text-green-600 font-medium">
+                                  {String.fromCharCode(65 + result.correctAnswer)} - {result.options[result.correctAnswer]}
+                                </span>
+                              ) : (
+                                <span className="ml-2 text-gray-500 italic">No correct answer provided</span>
+                              )}
+                            </div>
+                          </div>
                         </div>
                         
                         {result.explanation && (
