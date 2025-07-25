@@ -226,6 +226,47 @@ export const getSeededMockTestsBySubject = async (subjectId) => {
   }
 };
 
+export const generateFullSDEMockTest = async () => {
+  try {
+    // Get user ID from localStorage if available
+    let userId = null;
+    const userStr = localStorage.getItem('user');
+    if (userStr) {
+      try {
+        const user = JSON.parse(userStr);
+        userId = user._id;
+      } catch (e) {
+        console.error('Error parsing user from localStorage:', e);
+      }
+    }
+    
+    // Fetch all available subjects
+    const response = await api.get('/subject');
+    const subjects = response.data.subjects;
+    
+    if (!subjects || subjects.length === 0) {
+      throw new Error('No subjects found');
+    }
+    
+    // Use all subjects for a full SDE mock test
+    const subjectIds = subjects.map(subject => subject._id);
+    
+    // Generate a full SDE mock test with 50 questions
+    const testResponse = await api.post('/mock-test/generate-full-sde', {
+      subjects: subjectIds,
+      numberOfQuestions: 50,
+      questionsPerSubject: 10,
+      userId,
+      marksPerQuestion: 2,
+      negativeMarks: 1
+    });
+    
+    return testResponse.data;
+  } catch (error) {
+    throw error.response?.data || error.message;
+  }
+};
+
 export const generateCustomMockTest = async (subjects, numberOfQuestions = 20) => {
   try {
     // Get user ID from localStorage if available
