@@ -25,6 +25,9 @@ router.post('/generate', mockTestController.generateCustomMockTest);
 // Generate custom mock test (temporarily removed auth for testing)
 router.post('/generate-custom', mockTestController.generateCustomMockTest);
 
+// Generate full SDE mock test (temporarily removed auth for testing)
+router.post('/generate-full-sde', mockTestController.generateFullSDEMockTest);
+
 // Submit mock test attempt (temporarily removed auth for testing)
 router.post('/submit', mockTestController.submitMockTestAttempt);
 
