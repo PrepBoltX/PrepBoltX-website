@@ -303,44 +303,17 @@ exports.generateCustomMockTest = async (req, res) => {
                 // Continue with other subjects if one fails
             }
         }
-        
-        // If we couldn't find any real questions, create some placeholder questions as fallback
-        if (sections.length === 0) {
-            console.log('No real questions found, creating placeholder questions');
-            for (const subject of subjectDocs) {
-                const questions = [];
-                
-                for (let i = 0; i < questionsPerSubject; i++) {
-                    questions.push({
-                        question: `Sample ${subject.name} question ${i + 1}`,
-                        options: [
-                            `Option A for ${subject.name} question ${i + 1}`,
-                            `Option B for ${subject.name} question ${i + 1}`,
-                            `Option C for ${subject.name} question ${i + 1}`,
-                            `Option D for ${subject.name} question ${i + 1}`
-                        ],
-                        correctAnswer: Math.floor(Math.random() * 4), // Random correct answer
-                        marks: 4, // 4 marks per question
-                        negativeMarks: 1, // 1 mark negative marking
-                        explanation: `This is the explanation for ${subject.name} question ${i + 1}`,
-                        subject: subject.name,
-                        difficulty: 'medium'
-                    });
-                }
 
-                sections.push({
-                    title: subject.name,
-                    subjectRef: subject._id,
-                    description: `Questions from ${subject.name}`,
-                    questionsCount: questions.length,
-                    totalMarks: questions.length * 4, // 4 marks per question
-                    questions
-                });
-            }
+        if (sections.length === 0) {
+            return res.status(404).json({ message: 'Could not find enough questions for the selected subjects' });
         }
 
-        // Calculate total duration based on number of questions (60 seconds per question)
-        const totalQuestions = sections.reduce((sum, section) => sum + section.questionsCount, 0);
+        // Calculate total questions in all sections
+        const totalQuestions = sections.reduce((total, section) => {
+            return total + (section.questions ? section.questions.length : 0);
+        }, 0);
+
+        // Set duration based on number of questions (1 minute per question)
         const duration = totalQuestions * 60; // 60 seconds (1 minute) per question
 
         // Create the mock test
@@ -367,6 +340,134 @@ exports.generateCustomMockTest = async (req, res) => {
     } catch (error) {
         console.error('Generate custom mock test error:', error);
         res.status(500).json({ message: 'Server error while generating custom mock test' });
+    }
+};
+
+// Generate full SDE mock test
+exports.generateFullSDEMockTest = async (req, res) => {
+    try {
+        const { subjects, numberOfQuestions, questionsPerSubject, userId, marksPerQuestion, negativeMarks } = req.body;
+        const currentUserId = req.user ? req.user.userId : userId;
+        
+        // Set default values if not provided
+        const totalQuestions = numberOfQuestions || 50;
+        const questionPerSubject = questionsPerSubject || 10;
+        const marksPerQ = marksPerQuestion || 2;
+        const negativeM = negativeMarks || 1;
+
+        if (!subjects || !Array.isArray(subjects) || subjects.length === 0) {
+            return res.status(400).json({ message: 'At least one subject must be selected' });
+        }
+
+        // Get subject details
+        const subjectDocs = await Subject.find({ _id: { $in: subjects } });
+        if (!subjectDocs || subjectDocs.length === 0) {
+            return res.status(404).json({ message: 'No valid subjects found' });
+        }
+
+        // Create sections for each subject
+        const sections = [];
+
+        for (const subject of subjectDocs) {
+            try {
+                // Find mock tests for this subject that are not AI-generated
+                const subjectTests = await MockTest.find({ 
+                    subjects: subject._id,
+                    isGeneratedByAI: false
+                }).limit(5);
+                
+                if (!subjectTests || subjectTests.length === 0) {
+                    console.log(`No tests found for subject: ${subject.name}`);
+                    continue;
+                }
+                
+                // Select a random test from available tests
+                const randomTest = subjectTests[Math.floor(Math.random() * subjectTests.length)];
+                
+                if (!randomTest || !randomTest.sections || randomTest.sections.length === 0) {
+                    console.log(`Invalid test structure for subject: ${subject.name}`);
+                    continue;
+                }
+                
+                // Collect all questions from all sections of this test
+                const allQuestions = [];
+                randomTest.sections.forEach(section => {
+                    if (section.questions && section.questions.length > 0) {
+                        section.questions.forEach(question => {
+                            allQuestions.push({
+                                ...question,
+                                subject: subject.name,
+                                marks: marksPerQ, // Set marks to 2 for each question
+                                negativeMarks: negativeM // Set negative marks to 1 for each question
+                            });
+                        });
+                    }
+                });
+                
+                // If we have questions, shuffle them and take what we need
+                if (allQuestions.length > 0) {
+                    // Shuffle the questions
+                    for (let i = allQuestions.length - 1; i > 0; i--) {
+                        const j = Math.floor(Math.random() * (i + 1));
+                        [allQuestions[i], allQuestions[j]] = [allQuestions[j], allQuestions[i]];
+                    }
+                    
+                    // Take exactly 10 questions per subject
+                    const selectedQuestions = allQuestions.slice(0, questionPerSubject);
+                    
+                    sections.push({
+                        title: subject.name,
+                        subjectRef: subject._id,
+                        description: `Questions from ${subject.name}`,
+                        questionsCount: selectedQuestions.length,
+                        totalMarks: selectedQuestions.length * marksPerQ, // 2 marks per question
+                        questions: selectedQuestions
+                    });
+                    
+                    console.log(`Added ${selectedQuestions.length} questions from ${subject.name} for Full SDE Mock Test`);
+                } else {
+                    console.log(`No questions found in tests for subject: ${subject.name}`);
+                }
+            } catch (err) {
+                console.error(`Error processing subject ${subject.name}:`, err);
+                // Continue with other subjects if one fails
+            }
+        }
+
+        if (sections.length === 0) {
+            return res.status(404).json({ message: 'Could not find enough questions for the Full SDE Mock Test' });
+        }
+
+        // Set duration based on number of questions (1 minute per question)
+        const duration = totalQuestions * 60; // 60 seconds (1 minute) per question
+        
+        // Calculate total marks (2 marks per question)
+        const totalMarks = totalQuestions * marksPerQ;
+
+        // Create the mock test
+        const mockTest = new MockTest({
+            title: 'Full SDE Mock Test',
+            description: `Comprehensive mock test covering ${subjectDocs.length} subjects with ${questionPerSubject} questions each`,
+            testType: 'full',
+            subjects: subjects,
+            duration: duration, 
+            totalMarks: totalMarks,
+            totalQuestions: totalQuestions,
+            sections,
+            isGeneratedByAI: false,
+            difficulty: 'mixed',
+            createdBy: currentUserId
+        });
+
+        await mockTest.save();
+
+        res.status(201).json({
+            message: 'Full SDE mock test generated successfully',
+            mockTest
+        });
+    } catch (error) {
+        console.error('Generate Full SDE mock test error:', error);
+        res.status(500).json({ message: 'Server error while generating Full SDE mock test' });
     }
 };
 
